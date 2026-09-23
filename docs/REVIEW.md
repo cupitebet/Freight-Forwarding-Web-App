@@ -190,7 +190,7 @@ Selain itu, notifikasi estimasi sekarang menyebut alasannya secara spesifik (mis
 
 ### Diadopsi sebagai backlog (belum dikerjakan)
 
-- **PSE Lingkup Privat Komdigi** (KBLI 63122, lewat OSS) harus beres **sebelum** go-live. Ini tugas legal, paralel dengan development.
+- **PSE Lingkup Privat Komdigi: tidak diperlukan untuk saat ini.** Keputusan pemilik (23/09/2026): aplikasi hanya dipakai internal, tidak melayani publik. Tinjau ulang jika nanti ada akses dari luar perusahaan, mis. portal pelanggan (bagian 6.3 blueprint) atau login untuk klien/agen.
 - **Integrasi CEISA:** OAuth 2.0, validasi JSON Schema BC resmi dari `openapi.beacukai.go.id` sebelum submit, penanganan error 901/908 (sertifikat/koneksi) dengan backoff, dan **fallback ekspor flat file/Excel** untuk upload manual kalau H2H mati.
 - **Referensi DCSA** `carrierBookingReference` dan `transportDocumentReference` disimpan di `master_doc` untuk mencocokkan feed tracking.
 - **n8n:** pisahkan URL `/webhook-test/` (uji) dan `/webhook/` (produksi).
