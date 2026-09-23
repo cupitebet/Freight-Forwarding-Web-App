@@ -106,3 +106,43 @@ Dicek 23/09/2026 (kode, lisensi, commit terakhir).
 Dengan ini, polling tracking (mis. tiap 1 jam lewat n8n) langsung menggeser deadline dan menghentikan alarm tanpa input manual. Contohnya: kapal delay membuat semua cut-off dijadwalkan ulang, dan container yang sudah gate-out menghentikan alarm demurrage.
 
 **Rekomendasi:** pertahankan blueprint (NestJS + n8n + PostgreSQL). Jangan merombak ke Fleetbase. Beli data tracking via API berformat DCSA, dan pakai Fleetbase hanya kalau nanti butuh modul trucking/driver.
+
+## 6. Evaluasi batch kedua (repo TMS & vendor)
+
+Dicek 23/09/2026. Repo di-clone dan dibaca kodenya. Situs Shipday dan TMS Consulting diblokir proxy, jadi informasinya diambil dari hasil pencarian web.
+
+| Sumber | Isi sebenarnya | Lisensi / status | Kesimpulan |
+|--------|----------------|------------------|------------|
+| [github.com/FreightForward](https://github.com/FreightForward) + [freightforward.github.io](https://freightforward.github.io/) | Organisasi milik Resgef Labs (Bangladesh). Isinya hanya 2 repo: situs intro dan dokumentasi (Jekyll). Kode aplikasinya ada di repo `anwar-gazi/freightforward`. | Tidak aktif sejak Juli 2021 | Hanya dokumentasi. Lihat baris berikut. |
+| [anwar-gazi/freightforward](https://github.com/anwar-gazi/freightforward) | **Satu-satunya yang domainnya benar-benar forwarder.** Aplikasi Django untuk sea import/export dan air export: Job, MBL/HBL, MAWB/HAWB, cargo manifest, delivery order, job costing, credit note. | **GPL-2.0**, Django 2.1 + Python 3.6 (keduanya sudah EOL), commit terakhir 2021, hanya ada 7 file test | **Ambil konsep model datanya, jangan kodenya.** Kodenya copyleft dan stack-nya sudah mati. Desainnya juga menduplikasi model per modul (`SeaImportMbl`, `SeaExport…`, `Air…`), ETA hanya disimpan sebagai tanggal tanpa jam, dan tidak ada cut-off, free time, maupun kepabeanan. Hierarki Job → MBL → HBL → barang/container dan pemisahan job costing sudah dipakai di usulan model data di bawah. |
+| [JoeCelaster/InterFrieght](https://github.com/JoeCelaster/InterFrieght) | Proyek capstone mahasiswa (Kalvium): login, upload 4 dokumen (LC, packing list, invoice, PO), dan tracking ID. Stack Express + MongoDB + React. | **Tanpa lisensi** (artinya tidak boleh dipakai ulang), tanpa test | Tidak berguna. Model shipment-nya hanya berisi nama user dan path file. Nama file upload ditentukan dari `Date.now()` dan disimpan di disk lokal. |
+| [Topic transport-management-system](https://github.com/topics/transport-management-system?o=desc&s=stars) | 14 repo. Yang terbesar Fleetbase (sudah dievaluasi di bagian 5). Sisanya sistem bus sekolah/kampus, tiket, tanker, dan proyek kuliah dengan 0–22 bintang. | – | Tidak ada yang relevan untuk forwarding laut/udara maupun kepabeanan. |
+| [Topic transportation-management-system](https://github.com/topics/transportation-management-system) | 13 repo. Hanya dua yang serius: **Trenova** dan **loadpartner/tms**. Sisanya berupa stub API atau daftar tautan. | – | Lihat dua baris berikut. |
+| [emoss08/Trenova](https://github.com/emoss08/Trenova) | TMS **trucking AS** yang matang: dispatch, rating, billing, akuntansi, EDI 204/214, FMCSA, ekstraksi dokumen. Stack Go + PostgreSQL + React 19, dengan CDC ke Meilisearch/Redis. Aktif (commit kemarin). | **FSL-1.1** (source-available, bukan open source). Dilarang dipakai untuk produk yang bersaing; baru menjadi Apache-2.0 dua tahun setelah setiap rilis. | **Bagus sebagai referensi arsitektur**, bukan untuk dipakai langsung. Domainnya trucking AS (FMCSA, EDI X12), bukan laut/pabean. Yang layak dipelajari: package `shared/money` dan `decimalutils` (sesuai temuan #5 soal desimal), migrasi SQL-first, audit trail, dan pipeline ekstraksi dokumen. |
+| [loadpartner/tms](https://github.com/loadpartner/tms) | TMS untuk **freight broker truk di AS**: shipment, carrier, check call, dokumen. Stack Laravel + Inertia + React. | **FCL-1.0** (source-available), terakhir aktif Okt 2025 | Tidak cocok: domain dan stack-nya berbeda, dan pengembangannya melambat. |
+| [Shipday](https://www.shipday.com/pricing) | SaaS **last-mile delivery** untuk restoran, retail, dan e-commerce: dispatch driver, GPS, ETA pelanggan. Gratis sampai 300 order/bulan, berbayar $39–$299/bulan ([Capterra](https://www.capterra.com/p/211323/Shipday/)). | Komersial | Tidak relevan untuk forwarding. Pertimbangkan hanya kalau nanti ada layanan antar dokumen atau barang ke customer. |
+| [TMS Consulting](https://tms-consulting.co.id/) | **Bukan software TMS.** "TMS" adalah nama perusahaan: SAP Gold Partner di Jakarta yang menjual implementasi SAP S/4HANA Cloud Public Edition (GROW with SAP) untuk UKM ([SAP](https://www.sap.com/assetdetail/2024/04/b20fc599-b57e-0010-bca6-c68f7e60039b.html)). | Komersial | Alternatif "beli ERP". SAP kuat di akuntansi dan pajak, tapi tidak punya modul forwarding (MBL/HBL, cut-off) maupun H2H CEISA bawaan, jadi tetap butuh kustomisasi. Relevan kalau perusahaan juga butuh ERP keuangan. Aplikasi kita bisa mengirim invoice/jurnal ke SAP lewat API, alih-alih membangun modul akuntansi penuh. |
+
+### Usulan model data inti (konsep dari anwar-gazi/freightforward, disesuaikan)
+
+Satu model untuk semua moda dan arah (bukan tabel terpisah per sea import/export/air):
+
+```
+Job (nomor job, arah: EXPORT/IMPORT, moda: SEA/AIR, customer, PIC per fungsi)
+ ├─ MasterDoc   (MBL / MAWB: carrier, vessel/flight, voyage, POL/POD UN/LOCODE,
+ │               ETD/ATD/ETA/ATA timestamptz, carrier cut-off SI/VGM/CY/DRAFT_BL)
+ │   └─ HouseDoc (HBL / HAWB: shipper, consignee, notify; = pos manifes BC 1.1)
+ │       └─ CargoLine (HS code, uraian, kemasan, bruto/netto numeric(18,4), nilai)
+ ├─ Container   (nomor, ukuran/tipe, seal, VGM, free time D&D; relasi ke HouseDoc)
+ ├─ CustomsDoc  (BC 1.1 / BC 2.0 / BC 3.0: nomorAju, nomorDaftar, status CEISA, jalur,
+ │               payload request/response JSONB untuk audit)
+ ├─ Milestone   (event: SI_SUBMITTED, NPE_ISSUED, CONTAINER_GATE_OUT, … + sumber: manual/CEISA/DCSA)
+ ├─ Document    (file di S3/MinIO: invoice, packing list, SPPB, NPE, DO)
+ └─ JobCost / JobRevenue (per charge type & mata uang → profit per job; ekspor ke ERP)
+```
+
+`Milestone` + `MasterDoc`/`Container` adalah sumber data untuk `packages/deadline-alarm`. Datanya diisi dari input manual, respon CEISA, dan tracking DCSA.
+
+### Kesimpulan batch ini
+
+Tidak ada repo yang bisa langsung dipakai sebagai dasar aplikasi forwarding dengan kepabeanan Indonesia. Jadi keputusan membangun sendiri sesuai blueprint tetap benar. Yang diambil hanya konsep dan referensi: model data dari anwar-gazi/freightforward, pola arsitektur dari Trenova, dan opsi integrasi ke SAP untuk sisi keuangan.
