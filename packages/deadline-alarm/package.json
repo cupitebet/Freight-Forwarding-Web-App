@@ -1,0 +1,20 @@
+{
+  "name": "@ff/deadline-alarm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Alarm cut-off dokumen pelayaran, manifes BC 1.1, PEB/PIB, dan free time untuk Freight Forwarding Web App",
+  "type": "module",
+  "main": "src/index.ts",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "demo": "node src/demo.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
