@@ -28,11 +28,15 @@ export async function runAlarmTick(opts: {
       if (!(await opts.store.claim(alarm))) continue;
       try {
         await opts.notifier.send(alarm, shipment);
-        result.sent.push(alarm);
       } catch (error) {
         await opts.store.release(alarm);
         result.failed.push({ alarm, error });
+        continue;
       }
+      // Jika proses mati sebelum baris ini, lease klaim kedaluwarsa dan alarm dikirim ulang
+      // (at-least-once; penerima bisa dedup memakai `key`). Lebih baik dobel daripada hilang.
+      await opts.store.confirm(alarm);
+      result.sent.push(alarm);
     }
   }
   return result;

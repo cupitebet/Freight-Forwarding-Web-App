@@ -81,7 +81,7 @@ export const updateJobSchema = z.object({
 export type UpdateJobInput = z.infer<typeof updateJobSchema>;
 
 /** Toleransi selisih jam server/klien. Milestone di masa depan hampir pasti salah ketik dan akan mematikan alarm. */
-const FUTURE_TOLERANCE_MS = 5 * 60_000;
+export const FUTURE_TOLERANCE_MS = 5 * 60_000;
 
 export const milestoneSchema = z.object({
   event: z.enum(MILESTONE_EVENTS),

@@ -139,3 +139,26 @@ test('pengiriman gagal melepas klaim sehingga dicoba lagi', async () => {
   const r2 = await runAlarmTick({ shipments: [exportShipment()], rules: DEFAULT_RULES, store, notifier, now });
   assert.equal(r2.sent.length, r1.failed.length);
 });
+
+test('alarm data kurang: sekali per hari (WIB), jadi muncul lagi setelah data diisi lalu dihapus', () => {
+  const s = exportShipment(); // tanpa cut-off DRAFT_BL
+  const keyAt = (iso: string) => {
+    const now = new Date(iso);
+    return dueAlarms(computeDeadlines(s, DEFAULT_RULES, now), DEFAULT_RULES, now).find((a) => a.kind === 'MISSING_DATA')!.key;
+  };
+  assert.equal(keyAt('2026-09-23T08:00:00+07:00'), keyAt('2026-09-23T23:00:00+07:00'));
+  assert.notEqual(keyAt('2026-09-23T23:00:00+07:00'), keyAt('2026-09-24T00:30:00+07:00'));
+  assert.match(keyAt('2026-09-23T08:00:00+07:00'), /:MISSING:carrierCutoffs\.DRAFT_BL:2026-09-23$/);
+});
+
+test('alarm hanya ditandai terkirim setelah notifier sukses (confirm dipanggil sesudah send)', async () => {
+  const calls: string[] = [];
+  const store = {
+    claim: async () => (calls.push('claim'), true),
+    confirm: async () => void calls.push('confirm'),
+    release: async () => void calls.push('release'),
+  };
+  const notifier: Notifier = { send: async () => void calls.push('send') };
+  await runAlarmTick({ shipments: [exportShipment()], rules: [DEFAULT_RULES[0]!], store, notifier, now: new Date('2026-09-23T07:00:00+07:00') });
+  assert.deepEqual(calls, ['claim', 'send', 'confirm']);
+});

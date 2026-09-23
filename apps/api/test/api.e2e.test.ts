@@ -202,6 +202,26 @@ describe('HTTP API', () => {
     assert.equal(src.rows[0].source, 'DCSA');
   });
 
+  test('tracking DCSA: event ACT bertanggal masa depan tidak disimpan dan tidak menutup milestone', async () => {
+    const { body } = await api('POST', '/jobs', {
+      reference: 'IMP/T/003', direction: 'IMPORT', mode: 'SEA',
+      masterDoc: { portOfLoading: 'SGSIN', portOfDischarge: 'IDJKT', eta: hoursFromNow(-48) },
+      containers: [{ number: 'MSCU0000009' }],
+      freeTime: { demurrageDays: 5 },
+    });
+    const ev = (cls: string, at: string) => ({
+      eventType: 'EQUIPMENT', eventClassifierCode: cls, equipmentEventTypeCode: 'GTOT', equipmentReference: 'MSCU0000009',
+      emptyIndicatorCode: 'LADEN', eventDateTime: at, location: { UNLocationCode: 'IDJKT' },
+    });
+    const r = await api('POST', `/jobs/${body.job.id}/tracking-events`, [ev('ACT', hoursFromNow(48)), ev('EST', hoursFromNow(24))]);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.ignoredFutureActual, 1);
+    assert.equal(r.body.stored, 1); // hanya EST
+    assert.equal(r.body.job.events.CONTAINER_GATE_OUT, undefined);
+    const dm = r.body.deadlines.find((d: { ruleCode: string }) => d.ruleCode === 'IMP_DEMURRAGE_FREE_TIME');
+    assert.notEqual(dm.status, 'DONE');
+  });
+
   test('tracking DCSA: ETA estimasi yang terakhir diterima yang dipakai', async () => {
     const { body } = await api('POST', '/jobs', {
       reference: 'IMP/T/002', direction: 'IMPORT', mode: 'SEA',
@@ -278,6 +298,31 @@ describe('scheduler alarm', () => {
     const keys = hooks.map((h) => h.body.key);
     assert.equal(new Set(keys).size, keys.length);
     assert.equal(results.reduce((n, r) => n + r.sent, 0), keys.length);
+  });
+
+  test('klaim yang tertinggal (proses mati sebelum konfirmasi) dikirim ulang setelah lease habis', async () => {
+    await db.query(`UPDATE job SET status = 'CLOSED'`);
+    const { body } = await api('POST', '/jobs', exportJob('EXP/T/104'));
+    const scheduler = app.get(AlarmScheduler);
+    // Simulasi crash: klaim sudah ditulis (PENDING) tapi webhook tidak pernah terkonfirmasi.
+    const key = `${body.job.id}:EXP_SI_CLOSING:${body.deadlines.find((d: { ruleCode: string }) => d.ruleCode === 'EXP_SI_CLOSING').dueAt}:R6`;
+    await db.query(
+      `INSERT INTO deadline_alarm_sent (alarm_key, job_id, rule_code, kind, severity, escalate) VALUES ($1, $2, 'EXP_SI_CLOSING', 'REMINDER', 'CRITICAL', false)`,
+      [key, body.job.id],
+    );
+    await scheduler.tick();
+    assert.ok(!hooks.some((h) => h.body.key === key), 'klaim yang masih dalam lease tidak boleh diambil alih');
+
+    await db.query(`UPDATE deadline_alarm_sent SET claimed_at = now() - interval '1 hour' WHERE alarm_key = $1`, [key]);
+    await scheduler.tick();
+    assert.equal(hooks.filter((h) => h.body.key === key).length, 1);
+    const row = await db.query('SELECT status, sent_at FROM deadline_alarm_sent WHERE alarm_key = $1', [key]);
+    assert.equal(row.rows[0].status, 'SENT');
+    assert.ok(row.rows[0].sent_at);
+
+    await db.query(`UPDATE deadline_alarm_sent SET claimed_at = now() - interval '1 hour' WHERE alarm_key = $1`, [key]);
+    await scheduler.tick();
+    assert.equal(hooks.filter((h) => h.body.key === key).length, 1, 'yang sudah SENT tidak dikirim lagi');
   });
 
   test('override rule dari tabel deadline_rule: nonaktifkan & rule tidak valid diabaikan', async () => {

@@ -11,8 +11,14 @@ export interface Notifier {
  * `INSERT ... ON CONFLICT DO NOTHING`) sehingga aman untuk banyak worker.
  */
 export interface SentAlarmStore {
-  /** true jika alarm berhasil diklaim (belum pernah dikirim). */
+  /**
+   * true jika alarm berhasil diklaim untuk dikirim: belum pernah terkirim dan tidak sedang
+   * diklaim pengirim lain. Klaim harus berupa lease yang kedaluwarsa, supaya alarm yang
+   * klaimnya tertinggal (proses mati sebelum `confirm`) dikirim ulang, bukan hilang.
+   */
   claim(alarm: Alarm): Promise<boolean>;
+  /** Tandai terkirim setelah notifier sukses. */
+  confirm(alarm: Alarm): Promise<void>;
   /** Lepas klaim jika pengiriman gagal, supaya dicoba lagi di tick berikutnya. */
   release(alarm: Alarm): Promise<void>;
 }
@@ -24,6 +30,7 @@ export class InMemorySentAlarmStore implements SentAlarmStore {
     this.keys.add(alarm.key);
     return true;
   }
+  async confirm(): Promise<void> {}
   async release(alarm: Alarm): Promise<void> {
     this.keys.delete(alarm.key);
   }

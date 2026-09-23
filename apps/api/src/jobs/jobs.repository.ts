@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { applyDcsaEvents, type DcsaChange, type DcsaEvent, type MilestoneEvent, type Shipment } from '@ff/deadline-alarm';
 import { PG_POOL, withTransaction } from '../db/database.module.js';
-import type { CreateJobInput, MilestoneInput, UpdateJobInput } from './jobs.schemas.js';
+import { FUTURE_TOLERANCE_MS, type CreateJobInput, type MilestoneInput, type UpdateJobInput } from './jobs.schemas.js';
 
 const MASTER_DOC_COLUMNS = {
   number: 'number',
@@ -206,9 +206,19 @@ export class JobsRepository {
    * Simpan event tracking DCSA (dedup), lalu hitung ulang dari SELURUH riwayat job ini
    * sehingga aman untuk webhook incremental maupun polling riwayat penuh.
    */
-  async ingestTracking(id: string, events: DcsaEvent[], actor: string): Promise<{ stored: number; changes: DcsaChange[] }> {
+  async ingestTracking(
+    id: string,
+    incoming: DcsaEvent[],
+    actor: string,
+  ): Promise<{ stored: number; ignoredFutureActual: number; changes: DcsaChange[] }> {
+    // Event aktual (ACT) bertanggal masa depan pasti salah (jam/mapping provider) dan akan
+    // menandai milestone selesai lebih awal -> alarm mati. Jangan disimpan; laporkan jumlahnya.
+    const limit = Date.now() + FUTURE_TOLERANCE_MS;
+    const futureActual = incoming.filter((e) => e.eventClassifierCode === 'ACT' && Date.parse(e.eventDateTime) > limit);
+    const events = incoming.filter((e) => !futureActual.includes(e));
     return withTransaction(this.pool, async (db) => {
       await this.lockJob(db, id);
+      if (futureActual.length) await this.audit(db, id, 'TRACKING_FUTURE_ACTUAL_IGNORED', { events: futureActual }, actor);
       let stored = 0;
       for (const e of events) {
         // Event yang dikirim ulang ikut diperbarui waktu terimanya: estimasi yang diulang
@@ -239,7 +249,7 @@ export class JobsRepository {
         }
       }
       if (changes.length) await this.audit(db, id, 'TRACKING_APPLIED', { stored, changes }, actor);
-      return { stored, changes };
+      return { stored, ignoredFutureActual: futureActual.length, changes };
     });
   }
 

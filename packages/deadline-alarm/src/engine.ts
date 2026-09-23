@@ -7,6 +7,10 @@ const WARNING_WITHIN_HOURS = 24;
 const CRITICAL_WITHIN_HOURS = 6;
 const DEFAULT_OVERDUE_REPEAT_HOURS = 4;
 const DEFAULT_MAX_OVERDUE_ALARMS = 6;
+const WIB_OFFSET_MS = 7 * HOUR;
+
+/** Tanggal kalender WIB, mis. "2026-09-23". */
+const wibDate = (ms: number) => new Date(ms + WIB_OFFSET_MS).toISOString().slice(0, 10);
 
 function parse(iso: string | undefined): number | undefined {
   if (!iso) return undefined;
@@ -139,6 +143,8 @@ export function computeDeadlines(s: Shipment, rules: DeadlineRule[], now: Date):
  *   shipment yang baru diinput mepet deadline tidak mem-banjiri semua reminder.
  * - `dueAt` masuk ke key: kalau ETD/ETA/cut-off berubah, reminder otomatis di-arm ulang.
  * - OVERDUE: diulang tiap `overdueRepeatHours`, alarm ke-2 dst. dieskalasi.
+ * - MISSING_DATA: key memuat tanggal (WIB), jadi PIC diingatkan sekali sehari selama data
+ *   masih kosong, termasuk jika data sempat diisi lalu dihapus lagi.
  */
 export function dueAlarms(deadlines: Deadline[], rules: DeadlineRule[], now: Date): Alarm[] {
   const nowMs = now.getTime();
@@ -151,7 +157,13 @@ export function dueAlarms(deadlines: Deadline[], rules: DeadlineRule[], now: Dat
     const prefix = `${d.shipmentId}:${d.ruleCode}`;
 
     if (d.status === 'MISSING_DATA') {
-      alarms.push({ key: `${prefix}:MISSING:${(d.missing ?? []).join(',')}`, kind: 'MISSING_DATA', severity: 'INFO', escalate: false, deadline: d });
+      alarms.push({
+        key: `${prefix}:MISSING:${(d.missing ?? []).join(',')}:${wibDate(nowMs)}`,
+        kind: 'MISSING_DATA',
+        severity: 'INFO',
+        escalate: false,
+        deadline: d,
+      });
       continue;
     }
 
