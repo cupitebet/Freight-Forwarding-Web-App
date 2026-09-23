@@ -80,3 +80,29 @@ Perilaku alarm:
   - `specialized/data-privacy-officer.md`, `security/security-compliance-auditor.md`: review UU PDP / PSE / ISO 27001.
   - `engineering/engineering-devops-automator.md`, `engineering/engineering-sre.md`: deployment n8n queue mode dan monitoring.
 - Lebih bernilai lagi: gunakan format mereka untuk membuat **agen domain sendiri**, misalnya "CEISA Compliance Reviewer" (memeriksa mapping BC 2.0/BC 1.1 terhadap spesifikasi PIA-CEISA40) dan "Freight Ops Deadline Planner". Pengetahuan domain inilah yang tidak ada di repo tersebut.
+
+## 5. Evaluasi repo logistik open-source lain
+
+Dicek 23/09/2026 (kode, lisensi, commit terakhir).
+
+| Repo | Isi sebenarnya | Lisensi | Cocok untuk kita? |
+|------|----------------|---------|-------------------|
+| [fleetbase/fleetbase](https://github.com/fleetbase/fleetbase) | Platform operasional **armada darat**: order, driver, kendaraan, geofence, rute, telematika, invoice. Stack Laravel (PHP) + Ember.js. Aktif dikembangkan. | **AGPL-3.0** / komersial | **Bukan pengganti core app.** Tabel `manifests` di sana adalah manifest rute driver, bukan manifes BC 1.1. Tidak ada konsep vessel, B/L, container, cut-off, atau kepabeanan. Stack-nya juga beda dari blueprint (NestJS/React). Bisa dipertimbangkan nanti **khusus untuk trucking** (antar container ke/dari pelabuhan) sebagai sistem terpisah lewat REST API/webhook. Perhatikan AGPL: kalau Fleetbase dimodifikasi lalu dipakai customer lewat jaringan, modifikasinya wajib dibuka, kecuali membeli lisensi komersial. |
+| [themixlyweb/nextjs-logistics-website-template](https://github.com/themixlyweb/nextjs-logistics-website-template) | Landing page / company profile statis: hero, about, facts, footer. Next.js 15 + Bootstrap. Tanpa backend, tanpa fitur aplikasi. | MIT | Hanya untuk **website marketing** perusahaan. Tidak ada yang bisa dipakai untuk aplikasi operasional atau customer portal. |
+| [vinaybhosle/shippingrates-mcp](https://github.com/vinaybhosle/shippingrates-mcp) | Wrapper MCP untuk SaaS berbayar (tarif D&D, local charge, freight rate, jadwal kapal) untuk 6 carrier besar. Dibayar per panggilan (USDC). Data lebih banyak di pelabuhan India, **tidak ada data pelabuhan Indonesia** di README. | MIT (kode wrapper saja; datanya milik SaaS) | Belum cocok. Bisa dicoba untuk tim sales/pricing lewat Claude, tapi cek dulu cakupan pelabuhan Indonesia. |
+| [lxxmng/container-tracking-mcp](https://github.com/lxxmng/container-tracking-mcp) | Wrapper MCP (±360 baris) untuk SaaS tracking container, 200+ carrier termasuk KMTC/PIL/SITC. Event **dinormalkan ke standar DCSA**, plus ETA, posisi AIS, dan countdown D&D. Bayar per token (mulai €49). | MIT (wrapper) | **Paling berguna, tapi dari sisi idenya, bukan kodenya.** Kita tidak perlu MCP-nya di aplikasi; kita butuh **API tracking yang output-nya DCSA** (dari provider ini, provider lain, atau API carrier langsung). Karena itu sudah dibuat `applyDcsaEvents()` (lihat di bawah). |
+
+### Yang sudah diambil: adapter DCSA → alarm
+
+`packages/deadline-alarm/src/dcsa.ts`: `applyDcsaEvents(shipment, events)` mengubah event DCSA Track & Trace menjadi data shipment:
+
+- `DEPA`/`ARRI` di POL/POD → `atd`/`ata` (aktual) atau update `etd`/`eta` (estimasi). Transshipment diabaikan.
+- `DISC` laden di POD → `CONTAINER_DISCHARGED`, yang memulai hitungan free time storage/demurrage.
+- `GTOT` laden → `CONTAINER_GATE_OUT`, yang menutup demurrage dan memulai detention. Baru terisi setelah **semua** container keluar.
+- `GTIN` empty → `EMPTY_RETURNED`, yang menutup detention.
+- Ekspor: `GTIN` laden di POL → `CONTAINER_GATE_IN`, yang menutup CY closing.
+- Data yang diisi manual tidak ditimpa, dan hasilnya mengembalikan daftar `changes` untuk audit log.
+
+Dengan ini, polling tracking (mis. tiap 1 jam lewat n8n) langsung menggeser deadline dan menghentikan alarm tanpa input manual. Contohnya: kapal delay membuat semua cut-off dijadwalkan ulang, dan container yang sudah gate-out menghentikan alarm demurrage.
+
+**Rekomendasi:** pertahankan blueprint (NestJS + n8n + PostgreSQL). Jangan merombak ke Fleetbase. Beli data tracking via API berformat DCSA, dan pakai Fleetbase hanya kalau nanti butuh modul trucking/driver.

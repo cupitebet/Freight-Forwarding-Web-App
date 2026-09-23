@@ -33,6 +33,8 @@ await runAlarmTick({
 - `dueAlarms(deadlines, rules, now)` adalah fungsi murni yang menghasilkan alarm berikut key idempotennya.
 - Core App cukup mengisi `shipment.events.X` saat pekerjaan selesai (mis. `SI_SUBMITTED` ketika SI dikirim, `INWARD_MANIFEST_SUBMITTED` ketika respon CEISA sukses). Deadline terkait langsung dianggap selesai dan alarm berhenti.
 
+- `applyDcsaEvents(shipment, events)` mengisi ETA/ATA, bongkar, gate-out/in, dan empty return dari event tracking berformat DCSA (API carrier atau provider tracking). Kirim riwayat event lengkap, bukan hanya event baru.
+
 Payload webhook berisi `text` yang siap diteruskan n8n ke WhatsApp/Slack, `recipient` dari `shipment.pic[owner]`, dan flag `escalate`.
 
 Lihat `docs/REVIEW.md` di root repo untuk daftar rule dan catatan verifikasi regulasi.

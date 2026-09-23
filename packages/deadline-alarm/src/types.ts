@@ -50,6 +50,11 @@ export interface Shipment {
   roles: CompanyRole[];
   vesselName?: string;
   voyage?: string;
+  /** UN/LOCODE, mis. "IDJKT". Dipakai untuk mencocokkan event tracking (abaikan transshipment). */
+  portOfLoading?: string;
+  portOfDischarge?: string;
+  /** Nomor container, mis. ["MSCU7349821"]. */
+  containers?: string[];
   /** Estimasi & aktual jadwal sarana pengangkut. Aktual selalu diutamakan. */
   etd?: string;
   atd?: string;
