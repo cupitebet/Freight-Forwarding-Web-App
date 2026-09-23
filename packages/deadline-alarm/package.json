@@ -4,17 +4,26 @@
   "private": true,
   "description": "Alarm cut-off dokumen pelayaran, manifes BC 1.1, PEB/PIB, dan free time untuk Freight Forwarding Web App",
   "type": "module",
-  "main": "src/index.ts",
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "demo": "node src/demo.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
-  }
+    "@types/node": "^22.20.4",
+    "typescript": "^5.9.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
 }

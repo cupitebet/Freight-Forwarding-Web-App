@@ -24,8 +24,8 @@ import { DEFAULT_RULES, runAlarmTick, WebhookNotifier } from '@ff/deadline-alarm
 await runAlarmTick({
   shipments: await shipmentRepo.findActive(),         // map dari tabel shipment
   rules: await ruleRepo.load() ?? DEFAULT_RULES,       // tabel deadline_rule
-  store: new PgSentAlarmStore(pool),                   // lihat sql/001_deadline_alarm.sql
-  notifier: new WebhookNotifier(process.env.N8N_ALARM_WEBHOOK!, { 'x-signature': '…' }),
+  store: new PgSentAlarmStore(pool),                   // lihat apps/api/src/alarms
+  notifier: new WebhookNotifier(process.env.N8N_ALARM_WEBHOOK_URL!, { secret: process.env.ALARM_WEBHOOK_SECRET }),
 });
 ```
 

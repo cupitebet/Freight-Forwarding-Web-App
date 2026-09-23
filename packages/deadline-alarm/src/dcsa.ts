@@ -33,6 +33,7 @@ type Equip = Extract<DcsaEvent, { eventType: 'EQUIPMENT' }>;
  * Terapkan event DCSA ke shipment. `events` harus RIWAYAT LENGKAP semua container shipment
  * (seperti yang dikembalikan API tracking per polling), bukan hanya event baru dari webhook;
  * kalau menerima webhook incremental, simpan event di DB lalu panggil dengan seluruh riwayatnya.
+ * Urutan array = urutan diterima (paling lama dulu): untuk estimasi, yang terakhir diterima yang dipakai.
  * Aturan:
  * - Data yang sudah diisi manual TIDAK ditimpa (kecuali estimasi ETA/ETD yang di-update oleh estimasi baru).
  * - Estimasi tidak pernah menimpa aktual; event equipment hanya dari ACT.
@@ -58,10 +59,12 @@ export function applyDcsaEvents(s: Shipment, events: DcsaEvent[]): { shipment: S
     changes.push({ field: `events.${event}`, value });
   };
 
-  const transport = (code: 'ARRI' | 'DEPA', port: string | undefined, cls: 'ACT' | 'EST') =>
-    port
-      ? latest(events.filter((e) => e.eventType === 'TRANSPORT' && e.transportEventTypeCode === code && e.eventClassifierCode === cls && e.location.UNLocationCode === port))
-      : undefined;
+  const transport = (code: 'ARRI' | 'DEPA', port: string | undefined, cls: 'ACT' | 'EST') => {
+    if (!port) return undefined;
+    const list = events.filter((e) => e.eventType === 'TRANSPORT' && e.transportEventTypeCode === code && e.eventClassifierCode === cls && e.location.UNLocationCode === port);
+    // Aktual: waktu kejadian paling akhir. Estimasi: yang paling baru DITERIMA (ETA bisa maju atau mundur).
+    return cls === 'ACT' ? latest(list) : list.at(-1);
+  };
 
   setField('atd', transport('DEPA', s.portOfLoading, 'ACT')?.eventDateTime, false);
   setField('ata', transport('ARRI', s.portOfDischarge, 'ACT')?.eventDateTime, false);

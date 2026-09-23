@@ -32,6 +32,14 @@ test('ETA estimasi baru meng-update ETA, tapi tidak dipakai jika sudah ada ATA',
   assert.equal(r2.shipment.eta, imp.eta);
 });
 
+test('ETA estimasi: yang terakhir diterima menang walaupun lebih awal (kapal lebih cepat)', () => {
+  const { shipment } = applyDcsaEvents(imp, [
+    tr('ARRI', 'EST', 'IDJKT', '2026-09-20T00:00:00Z'),
+    tr('ARRI', 'EST', 'IDJKT', '2026-09-19T00:00:00Z'),
+  ]);
+  assert.equal(shipment.eta, '2026-09-19T00:00:00Z');
+});
+
 test('gate-out baru terisi setelah SEMUA container keluar (pakai waktu terakhir); bongkar pakai yang pertama', () => {
   const history = [
     eq('DISC', 'MSCU0000002', 'LADEN', 'IDJKT', '2026-09-18T12:00:00Z'),

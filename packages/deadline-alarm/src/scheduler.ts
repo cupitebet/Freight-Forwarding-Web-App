@@ -25,12 +25,12 @@ export async function runAlarmTick(opts: {
   for (const shipment of opts.shipments) {
     const alarms = dueAlarms(computeDeadlines(shipment, opts.rules, now), opts.rules, now);
     for (const alarm of alarms) {
-      if (!(await opts.store.claim(alarm.key))) continue;
+      if (!(await opts.store.claim(alarm))) continue;
       try {
         await opts.notifier.send(alarm, shipment);
         result.sent.push(alarm);
       } catch (error) {
-        await opts.store.release(alarm.key);
+        await opts.store.release(alarm);
         result.failed.push({ alarm, error });
       }
     }

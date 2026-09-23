@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import type { Alarm, Shipment } from './types.ts';
 
 export interface Notifier {
@@ -5,26 +6,26 @@ export interface Notifier {
 }
 
 /**
- * Penyimpan alarm yang sudah terkirim. Di produksi pakai tabel
- * `deadline_alarm_sent` (lihat sql/001_deadline_alarm.sql) dengan
- * `INSERT ... ON CONFLICT DO NOTHING` sehingga aman untuk banyak worker.
+ * Penyimpan alarm yang sudah terkirim, dengan `alarm.key` sebagai kunci unik.
+ * Implementasi PostgreSQL ada di apps/api (tabel `deadline_alarm_sent`,
+ * `INSERT ... ON CONFLICT DO NOTHING`) sehingga aman untuk banyak worker.
  */
 export interface SentAlarmStore {
-  /** true jika key berhasil diklaim (belum pernah dikirim). */
-  claim(key: string): Promise<boolean>;
+  /** true jika alarm berhasil diklaim (belum pernah dikirim). */
+  claim(alarm: Alarm): Promise<boolean>;
   /** Lepas klaim jika pengiriman gagal, supaya dicoba lagi di tick berikutnya. */
-  release(key: string): Promise<void>;
+  release(alarm: Alarm): Promise<void>;
 }
 
 export class InMemorySentAlarmStore implements SentAlarmStore {
   private readonly keys = new Set<string>();
-  async claim(key: string): Promise<boolean> {
-    if (this.keys.has(key)) return false;
-    this.keys.add(key);
+  async claim(alarm: Alarm): Promise<boolean> {
+    if (this.keys.has(alarm.key)) return false;
+    this.keys.add(alarm.key);
     return true;
   }
-  async release(key: string): Promise<void> {
-    this.keys.delete(key);
+  async release(alarm: Alarm): Promise<void> {
+    this.keys.delete(alarm.key);
   }
 }
 
@@ -53,33 +54,57 @@ export function formatAlarmMessage(alarm: Alarm, s: Shipment): string {
   }
 }
 
+export interface WebhookNotifierOptions {
+  /** Secret bersama dengan n8n. Jika diisi, request ditandatangani HMAC-SHA256. */
+  secret?: string;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+/**
+ * Tanda tangan webhook: `x-ff-signature: sha256=<hex HMAC(secret, "<timestamp>.<body>")>`
+ * dan `x-ff-timestamp: <unix detik>`. Penerima wajib menolak timestamp yang
+ * selisihnya > 5 menit (anti-replay) dan membandingkan signature secara constant-time.
+ */
+export function signWebhook(secret: string, body: string, timestamp: number): string {
+  return `sha256=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}`;
+}
+
 /**
  * Kirim alarm ke webhook n8n (sesuai blueprint: n8n yang meneruskan ke
  * WhatsApp/Slack/email). Payload berisi teks siap kirim + data terstruktur.
  */
 export class WebhookNotifier implements Notifier {
   private readonly url: string;
-  private readonly headers: Record<string, string>;
+  private readonly opts: WebhookNotifierOptions;
 
-  constructor(url: string, headers: Record<string, string> = {}) {
+  constructor(url: string, opts: WebhookNotifierOptions = {}) {
     this.url = url;
-    this.headers = headers;
+    this.opts = opts;
   }
 
   async send(alarm: Alarm, shipment: Shipment): Promise<void> {
+    const body = JSON.stringify({
+      key: alarm.key,
+      kind: alarm.kind,
+      severity: alarm.severity,
+      escalate: alarm.escalate,
+      recipient: shipment.pic?.[alarm.deadline.owner] ?? null,
+      text: formatAlarmMessage(alarm, shipment),
+      shipment: { id: shipment.id, reference: shipment.reference },
+      deadline: alarm.deadline,
+    });
+    const headers: Record<string, string> = { 'content-type': 'application/json', ...this.opts.headers };
+    if (this.opts.secret) {
+      const ts = Math.floor(Date.now() / 1000);
+      headers['x-ff-timestamp'] = String(ts);
+      headers['x-ff-signature'] = signWebhook(this.opts.secret, body, ts);
+    }
     const res = await fetch(this.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...this.headers },
-      body: JSON.stringify({
-        key: alarm.key,
-        kind: alarm.kind,
-        severity: alarm.severity,
-        escalate: alarm.escalate,
-        recipient: shipment.pic?.[alarm.deadline.owner] ?? null,
-        text: formatAlarmMessage(alarm, shipment),
-        shipment: { id: shipment.id, reference: shipment.reference },
-        deadline: alarm.deadline,
-      }),
+      headers,
+      body,
+      signal: AbortSignal.timeout(this.opts.timeoutMs ?? 10_000),
     });
     if (!res.ok) throw new Error(`Webhook ${res.status}: ${await res.text()}`);
   }
