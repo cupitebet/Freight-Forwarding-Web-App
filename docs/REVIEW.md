@@ -3,6 +3,10 @@
 Catatan: repo ini belum punya kode aplikasi. Yang direview adalah dokumen
 `Freight Forwarder App & API Bea Cukai.docx` (arsitektur NestJS + n8n + PostgreSQL + Redis, integrasi H2H CEISA 4.0).
 
+> **Keputusan scope (23/09/2026):** aplikasi hanya untuk **internal** perusahaan.
+> Portal pelanggan (blueprint bagian 3.1 "Customer Portal" & 6.3 "Portal Pelanggan Mandiri") **tidak dibangun**,
+> dan pendaftaran PSE Komdigi tidak diperlukan. Pengguna: staf DOCS, CUSTOMS, OPS, FINANCE.
+
 Arahnya sudah benar: core app dipisah dari lapisan integrasi, PostgreSQL + JSONB, token disimpan di cache, dan layar utama fokus ke pengecualian (exception).
 Di bawah ini daftar yang perlu diperbaiki sebelum mulai coding, diurutkan dari yang paling berisiko.
 
@@ -91,7 +95,7 @@ Dicek 23/09/2026 (kode, lisensi, commit terakhir).
 | Repo | Isi sebenarnya | Lisensi | Cocok untuk kita? |
 |------|----------------|---------|-------------------|
 | [fleetbase/fleetbase](https://github.com/fleetbase/fleetbase) | Platform operasional **armada darat**: order, driver, kendaraan, geofence, rute, telematika, invoice. Stack Laravel (PHP) + Ember.js. Aktif dikembangkan. | **AGPL-3.0** / komersial | **Bukan pengganti core app.** Tabel `manifests` di sana adalah manifest rute driver, bukan manifes BC 1.1. Tidak ada konsep vessel, B/L, container, cut-off, atau kepabeanan. Stack-nya juga beda dari blueprint (NestJS/React). Bisa dipertimbangkan nanti **khusus untuk trucking** (antar container ke/dari pelabuhan) sebagai sistem terpisah lewat REST API/webhook. Perhatikan AGPL: kalau Fleetbase dimodifikasi lalu dipakai customer lewat jaringan, modifikasinya wajib dibuka, kecuali membeli lisensi komersial. |
-| [themixlyweb/nextjs-logistics-website-template](https://github.com/themixlyweb/nextjs-logistics-website-template) | Landing page / company profile statis: hero, about, facts, footer. Next.js 15 + Bootstrap. Tanpa backend, tanpa fitur aplikasi. | MIT | Hanya untuk **website marketing** perusahaan. Tidak ada yang bisa dipakai untuk aplikasi operasional atau customer portal. |
+| [themixlyweb/nextjs-logistics-website-template](https://github.com/themixlyweb/nextjs-logistics-website-template) | Landing page / company profile statis: hero, about, facts, footer. Next.js 15 + Bootstrap. Tanpa backend, tanpa fitur aplikasi. | MIT | Hanya untuk **website marketing** perusahaan. Tidak ada yang bisa dipakai untuk aplikasi operasional. |
 | [vinaybhosle/shippingrates-mcp](https://github.com/vinaybhosle/shippingrates-mcp) | Wrapper MCP untuk SaaS berbayar (tarif D&D, local charge, freight rate, jadwal kapal) untuk 6 carrier besar. Dibayar per panggilan (USDC). Data lebih banyak di pelabuhan India, **tidak ada data pelabuhan Indonesia** di README. | MIT (kode wrapper saja; datanya milik SaaS) | Belum cocok. Bisa dicoba untuk tim sales/pricing lewat Claude, tapi cek dulu cakupan pelabuhan Indonesia. |
 | [lxxmng/container-tracking-mcp](https://github.com/lxxmng/container-tracking-mcp) | Wrapper MCP (±360 baris) untuk SaaS tracking container, 200+ carrier termasuk KMTC/PIL/SITC. Event **dinormalkan ke standar DCSA**, plus ETA, posisi AIS, dan countdown D&D. Bayar per token (mulai €49). | MIT (wrapper) | **Paling berguna, tapi dari sisi idenya, bukan kodenya.** Kita tidak perlu MCP-nya di aplikasi; kita butuh **API tracking yang output-nya DCSA** (dari provider ini, provider lain, atau API carrier langsung). Karena itu sudah dibuat `applyDcsaEvents()` (lihat di bawah). |
 
@@ -190,7 +194,7 @@ Selain itu, notifikasi estimasi sekarang menyebut alasannya secara spesifik (mis
 
 ### Diadopsi sebagai backlog (belum dikerjakan)
 
-- **PSE Lingkup Privat Komdigi: tidak diperlukan untuk saat ini.** Keputusan pemilik (23/09/2026): aplikasi hanya dipakai internal, tidak melayani publik. Tinjau ulang jika nanti ada akses dari luar perusahaan, mis. portal pelanggan (bagian 6.3 blueprint) atau login untuk klien/agen.
+- **PSE Lingkup Privat Komdigi: tidak diperlukan untuk saat ini.** Keputusan pemilik (23/09/2026): aplikasi hanya dipakai internal, tidak melayani publik. Portal pelanggan (blueprint bagian 3.1 & 6.3) **dikeluarkan dari scope**. Tinjau ulang PSE hanya jika kelak ada akses dari luar perusahaan (mis. login untuk klien/agen).
 - **Integrasi CEISA:** OAuth 2.0, validasi JSON Schema BC resmi dari `openapi.beacukai.go.id` sebelum submit, penanganan error 901/908 (sertifikat/koneksi) dengan backoff, dan **fallback ekspor flat file/Excel** untuk upload manual kalau H2H mati.
 - **Referensi DCSA** `carrierBookingReference` dan `transportDocumentReference` disimpan di `master_doc` untuk mencocokkan feed tracking.
 - **n8n:** pisahkan URL `/webhook-test/` (uji) dan `/webhook/` (produksi).
