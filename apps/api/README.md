@@ -4,21 +4,20 @@ Core API (NestJS 12 + PostgreSQL) untuk job forwarding, milestone, tracking DCSA
 
 ## Menjalankan lokal
 
+Windows: lihat `docs/LOCAL-WINDOWS.md`. Linux/macOS, dari root repo:
+
 ```bash
-# dari root repo
 npm ci
 cp .env.example .env                      # isi API_KEYS (openssl rand -hex 24)
-docker compose up -d db                   # atau PostgreSQL 16 lokal
+docker compose up -d db                   # juga membuat database ff_test
 npm run build
-DATABASE_URL=postgres://ff:ff@localhost:5432/ff npm run migrate -w @ff/api
-set -a && . ./.env && set +a && npm start -w @ff/api
+npm run migrate
+npm start
 ```
 
-Test e2e memakai database sungguhan dan **menghapus seluruh isi schema `public`** di database test:
+`npm start`, `npm run migrate`, dan `npm test` otomatis membaca `.env` di root repo. Variabel environment yang sudah di-set tetap diutamakan.
 
-```bash
-TEST_DATABASE_URL=postgres://ff:ff@localhost:5432/ff_test npm test -w @ff/api
-```
+Test e2e memakai database sungguhan dan **menghapus seluruh isi schema `public`** di `TEST_DATABASE_URL`. Karena itu nama database wajib berakhiran `_test`.
 
 ## Endpoint
 

@@ -101,6 +101,12 @@ describe('konfigurasi', () => {
     assert.throws(() => loadConfig({ NODE_ENV: 'production', DATABASE_URL: DB_URL, API_KEYS: API_KEY }), /N8N_ALARM_WEBHOOK_URL/);
   });
 
+  test('baris .env kosong dianggap tidak diisi (sesuai .env.example)', () => {
+    const c = loadConfig({ DATABASE_URL: DB_URL, API_KEYS: API_KEY, N8N_ALARM_WEBHOOK_URL: '', ALARM_WEBHOOK_SECRET: '', PORT: '' });
+    assert.equal(c.alarm.webhookUrl, undefined);
+    assert.equal(c.port, 3000);
+  });
+
   test('migrasi idempoten', async () => {
     assert.deepEqual(await runMigrations(db), []);
   });

@@ -42,7 +42,9 @@ export interface AppConfig {
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const parsed = schema.safeParse(env);
+  // Baris `.env` seperti `N8N_ALARM_WEBHOOK_URL=` berarti "tidak diisi", bukan string kosong.
+  const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v.trim() !== ''));
+  const parsed = schema.safeParse(cleaned);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Konfigurasi environment tidak valid:\n${issues}`);

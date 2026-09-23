@@ -9,9 +9,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/src/main.js",
-    "migrate": "node dist/src/db/migrate-cli.js",
-    "test": "tsc && node --test --test-concurrency=1 'dist/test/**/*.test.js'"
+    "start": "node --env-file-if-exists=../../.env dist/src/main.js",
+    "migrate": "node --env-file-if-exists=../../.env dist/src/db/migrate-cli.js",
+    "test": "tsc && node --env-file-if-exists=../../.env --test --test-concurrency=1 \"dist/test/**/*.test.js\""
   },
   "dependencies": {
     "@ff/deadline-alarm": "^0.1.0",
