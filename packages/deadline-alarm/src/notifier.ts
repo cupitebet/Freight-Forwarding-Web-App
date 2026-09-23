@@ -42,15 +42,16 @@ export function formatAlarmMessage(alarm: Alarm, s: Shipment): string {
   const offset = s.portUtcOffsetMinutes ?? 420;
   const vessel = [s.vesselName, s.voyage].filter(Boolean).join(' / ');
   const head = `[${s.reference}]${vessel ? ` ${vessel}` : ''}`;
-  const est = d.estimated ? ' (ESTIMASI — cut-off pelayaran belum diinput)' : '';
+  const est = d.estimated ? ` (ESTIMASI: ${d.estimateNote ?? 'data acuan belum lengkap'})` : '';
+  const risk = d.risk ? `\nRisiko: ${d.risk}` : '';
 
   switch (alarm.kind) {
     case 'MISSING_DATA':
       return `ℹ️ ${head}\n${d.title}\nDeadline belum bisa dihitung. Lengkapi: ${(d.missing ?? []).join(', ')}.`;
     case 'REMINDER':
-      return `${alarm.severity === 'CRITICAL' ? '🔴' : '🟡'} ${head}\n${d.title}\nBatas: ${fmtLocal(d.dueAt!, offset)}${est}\nSisa: ${d.hoursLeft} jam — PIC ${d.owner}.`;
+      return `${alarm.severity === 'CRITICAL' ? '🔴' : '🟡'} ${head}\n${d.title}\nBatas: ${fmtLocal(d.dueAt!, offset)}${est}\nSisa: ${d.hoursLeft} jam — PIC ${d.owner}.${risk}`;
     case 'OVERDUE':
-      return `🚨 TERLAMBAT ${head}\n${d.title}\nBatas: ${fmtLocal(d.dueAt!, offset)}${est}\nLewat ${Math.abs(d.hoursLeft ?? 0)} jam.${alarm.escalate ? ' Eskalasi ke supervisor.' : ''}`;
+      return `🚨 TERLAMBAT ${head}\n${d.title}\nBatas: ${fmtLocal(d.dueAt!, offset)}${est}\nLewat ${Math.abs(d.hoursLeft ?? 0)} jam.${alarm.escalate ? ' Eskalasi ke supervisor.' : ''}${risk}`;
   }
 }
 

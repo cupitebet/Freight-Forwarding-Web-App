@@ -27,10 +27,12 @@ export type MilestoneEvent =
   | 'VGM_SUBMITTED'
   | 'DRAFT_BL_APPROVED'
   | 'NPE_ISSUED' // PEB mendapat NPE
+  | 'PEB_BL_UPDATED' // nomor/tanggal MBL/HBL dilengkapi di PEB setelah kapal berangkat
   | 'CONTAINER_GATE_IN'
   | 'OUTWARD_MANIFEST_SUBMITTED'
   | 'RKSP_SUBMITTED'
   | 'INWARD_MANIFEST_SUBMITTED'
+  | 'HOUSE_BL_RECONCILED' // pos house B/L sudah terekonsiliasi dengan master B/L di CEISA
   | 'PIB_SUBMITTED'
   | 'SPPB_ISSUED'
   | 'RED_LANE_ASSIGNED' // jalur merah
@@ -80,6 +82,13 @@ export type Anchor =
   | { kind: 'CARRIER_CUTOFF'; cutoff: CarrierCutoff }
   | { kind: 'DEPARTURE'; offsetHours: number } // ATD, fallback ETD
   | { kind: 'ARRIVAL'; offsetHours: number } // ATA, fallback ETA
+  /**
+   * Relatif terhadap kedatangan, dengan offset berbeda menurut lama pelayaran (ETD/ATD → ETA/ATA).
+   * Contoh inward manifest laut: pelayaran >= 24 jam → 24 jam sebelum tiba; < 24 jam → sebelum tiba.
+   * Jika waktu berangkat belum diketahui, dipakai offset pelayaran panjang (lebih awal = lebih aman)
+   * dan deadline ditandai estimasi.
+   */
+  | { kind: 'ARRIVAL_BY_VOYAGE'; thresholdHours: number; longVoyageOffsetHours: number; shortVoyageOffsetHours: number }
   | { kind: 'EVENT'; event: MilestoneEvent; offsetHours: number }
   /**
    * Free time: berakhir pukul 23:59:59 waktu pelabuhan pada hari ke-N,
@@ -109,6 +118,8 @@ export interface DeadlineRule {
   maxOverdueAlarms?: number;
   /** Dasar aturan / catatan. WAJIB diverifikasi tim compliance sebelum produksi. */
   basis: string;
+  /** Konsekuensi jika terlambat, ditampilkan di notifikasi (mis. rentang denda). */
+  risk?: string;
 }
 
 export type DeadlineStatus =
@@ -129,8 +140,11 @@ export interface Deadline {
   status: DeadlineStatus;
   /** ISO UTC; null jika data acuan belum ada. */
   dueAt: string | null;
-  /** true jika dihitung dari fallback (mis. cut-off pelayaran belum diinput). */
+  /** true jika dihitung dari fallback / asumsi (mis. cut-off pelayaran belum diinput). */
   estimated: boolean;
+  /** Alasan estimasi, mis. "carrierCutoffs.SI belum diisi". */
+  estimateNote?: string;
+  risk?: string;
   completedAt?: string;
   hoursLeft?: number;
   missing?: string[];

@@ -10,6 +10,12 @@ const anchor = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('CARRIER_CUTOFF'), cutoff: z.enum(CUTOFFS) }),
   z.object({ kind: z.literal('DEPARTURE'), offsetHours: hours }),
   z.object({ kind: z.literal('ARRIVAL'), offsetHours: hours }),
+  z.object({
+    kind: z.literal('ARRIVAL_BY_VOYAGE'),
+    thresholdHours: z.number().positive(),
+    longVoyageOffsetHours: hours,
+    shortVoyageOffsetHours: hours,
+  }),
   z.object({ kind: z.literal('EVENT'), event: z.enum(MILESTONE_EVENTS), offsetHours: hours }),
   z.object({
     kind: z.literal('FREE_TIME'),
@@ -33,6 +39,7 @@ const ruleSchema = z.object({
   overdueRepeatHours: z.number().positive().optional(),
   maxOverdueAlarms: z.number().int().min(0).optional(),
   basis: z.string().min(1),
+  risk: z.string().min(1).optional(),
 }) satisfies z.ZodType<DeadlineRule>;
 
 /**

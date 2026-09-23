@@ -1,11 +1,15 @@
 import type { DeadlineRule } from './types.ts';
 
 /**
- * Katalog default. Angka & dasar hukum di bawah adalah TITIK AWAL — cut-off
- * pelayaran berbeda per carrier/terminal dan regulasi bisa berubah, jadi
- * simpan katalog ini di DB (per customer / per carrier) dan minta tim
- * compliance memverifikasi kolom `basis` sebelum go-live.
+ * Katalog default. Batas regulasi mengikuti riset "Riset Aplikasi Freight Forwarding"
+ * (docs/REVIEW.md bagian 7); cut-off pelayaran berbeda per carrier/terminal.
+ * Kolom `basis` menyebut sumbernya. Tim compliance WAJIB mencocokkan setiap baris dengan
+ * teks resmi PMK sebelum go-live; override tanpa deploy lewat tabel `deadline_rule`.
  */
+
+/** Denda manifes (sumber riset: FAQ Bea Cukai & ketentuan sanksi administrasi kepabeanan). */
+const MANIFEST_LATE_RISK = 'Denda Rp10 jt s.d. Rp100 jt per keterlambatan, berjenjang bila berulang dalam 6 bulan.';
+
 export const DEFAULT_RULES: DeadlineRule[] = [
   // ---------------------------------------------------------------- EKSPOR
   {
@@ -46,7 +50,24 @@ export const DEFAULT_RULES: DeadlineRule[] = [
     fallback: { kind: 'DEPARTURE', offsetHours: -24 },
     doneWhen: 'NPE_ISSUED',
     remindBeforeHours: [48, 24, 6, 2],
-    basis: 'Barang ekspor masuk kawasan pabean setelah PEB/NPE (PMK 145/PMK.04/2014 & perubahannya) — verifikasi.',
+    basis:
+      'PMK 155/PMK.04/2022: PEB paling cepat 7 hari sebelum perkiraan ekspor, paling lambat sebelum barang masuk Kawasan Pabean/terminal. CY closing dipakai sebagai batas gate-in terakhir.',
+    risk: 'Container tidak boleh gate-in tanpa NPE: shut-out / roll-over ke kapal berikutnya.',
+  },
+  {
+    code: 'EXP_PEB_BL_UPDATE',
+    title: 'Lengkapi data MBL/HBL di PEB setelah kapal berangkat',
+    category: 'BEA_CUKAI',
+    owner: 'CUSTOMS',
+    directions: ['EXPORT'],
+    modes: ['SEA', 'AIR'],
+    roles: ['PPJK'],
+    anchor: { kind: 'DEPARTURE', offsetHours: 3 * 24 },
+    doneWhen: 'PEB_BL_UPDATED',
+    // Riset: ingatkan pada hari kalender ke-2 setelah keberangkatan.
+    remindBeforeHours: [24, 6],
+    basis:
+      'PMK 155/PMK.04/2022: data Master/House B/L dilengkapi paling lama 3 hari kalender sejak keberangkatan sarana pengangkut. Dihitung 72 jam dari ATD/ETD (konservatif).',
   },
   {
     code: 'EXP_CY_CLOSING',
@@ -79,12 +100,14 @@ export const DEFAULT_RULES: DeadlineRule[] = [
     category: 'BEA_CUKAI',
     owner: 'DOCS',
     directions: ['EXPORT'],
-    modes: ['SEA'],
+    modes: ['SEA', 'AIR'],
     roles: ['NVOCC', 'CARRIER_AGENT'],
-    anchor: { kind: 'DEPARTURE', offsetHours: 24 },
+    // Sebelumnya ATD+24 jam; riset: paling lambat SEBELUM keberangkatan.
+    anchor: { kind: 'DEPARTURE', offsetHours: 0 },
     doneWhen: 'OUTWARD_MANIFEST_SUBMITTED',
-    remindBeforeHours: [24, 6, 2],
-    basis: 'PMK 158/PMK.04/2017 & perubahannya (manifes keberangkatan) — verifikasi batas jam.',
+    remindBeforeHours: [24, 12, 6, 2],
+    basis: 'PMK 158/PMK.04/2017 jo. PMK 97/PMK.04/2020: outward manifest paling lambat sebelum keberangkatan sarana pengangkut (semua moda).',
+    risk: MANIFEST_LATE_RISK,
   },
 
   // ---------------------------------------------------------------- IMPOR
@@ -107,12 +130,44 @@ export const DEFAULT_RULES: DeadlineRule[] = [
     category: 'BEA_CUKAI',
     owner: 'DOCS',
     directions: ['IMPORT'],
-    modes: ['SEA', 'AIR'],
+    modes: ['SEA'],
+    roles: ['NVOCC', 'CARRIER_AGENT'],
+    anchor: { kind: 'ARRIVAL_BY_VOYAGE', thresholdHours: 24, longVoyageOffsetHours: -24, shortVoyageOffsetHours: 0 },
+    doneWhen: 'INWARD_MANIFEST_SUBMITTED',
+    // H-12 jam: eskalasi khusus dari riset untuk mencegah denda.
+    remindBeforeHours: [72, 24, 12, 6, 2],
+    basis:
+      'PMK 158/PMK.04/2017 jo. PMK 97/PMK.04/2020: laut, waktu tempuh >= 24 jam paling lambat 24 jam sebelum kedatangan; < 24 jam paling lambat sebelum kedatangan. Waktu tempuh = ETD/ATD pelabuhan asal s.d. ETA/ATA.',
+    risk: MANIFEST_LATE_RISK,
+  },
+  {
+    code: 'IMP_INWARD_MANIFEST_AIR',
+    title: 'Submit inward manifest BC 1.1 udara (pos house AWB)',
+    category: 'BEA_CUKAI',
+    owner: 'DOCS',
+    directions: ['IMPORT'],
+    modes: ['AIR'],
     roles: ['NVOCC', 'CARRIER_AGENT'],
     anchor: { kind: 'ARRIVAL', offsetHours: 0 },
     doneWhen: 'INWARD_MANIFEST_SUBMITTED',
-    remindBeforeHours: [72, 24, 6, 2],
-    basis: 'PMK 158/PMK.04/2017 & perubahannya: paling lambat sebelum kedatangan — verifikasi per moda.',
+    remindBeforeHours: [24, 6, 2, 1],
+    basis: 'PMK 158/PMK.04/2017 jo. PMK 97/PMK.04/2020: udara, paling lambat sebelum kedatangan sarana pengangkut.',
+    risk: MANIFEST_LATE_RISK,
+  },
+  {
+    code: 'IMP_HOUSE_BL_RECONCILE',
+    title: 'Rekonsiliasi pos house B/L dengan master B/L (cegah penolakan kode 57)',
+    category: 'BEA_CUKAI',
+    owner: 'DOCS',
+    directions: ['IMPORT'],
+    modes: ['SEA'],
+    roles: ['NVOCC'],
+    anchor: { kind: 'ARRIVAL', offsetHours: 7 * 24 },
+    doneWhen: 'HOUSE_BL_RECONCILED',
+    // Riset: peringatan kritis pada hari ke-5 setelah kedatangan.
+    remindBeforeHours: [48, 24],
+    basis:
+      'Riset (FAQ Duktek Bea Cukai Tanjung Priok / CEISA 4.0, sumber sekunder): house B/L tanpa rekonsiliasi dengan master B/L dalam 7 hari sejak kedatangan ditolak (kode 57). WAJIB dikonfirmasi ke KPU/KPPBC.',
   },
   {
     code: 'IMP_PIB_PRENOTIF',
@@ -194,7 +249,10 @@ export const DEFAULT_RULES: DeadlineRule[] = [
     anchor: { kind: 'EVENT', event: 'CONTAINER_DISCHARGED', offsetHours: 30 * 24 },
     fallback: { kind: 'ARRIVAL', offsetHours: 30 * 24 },
     doneWhen: 'CONTAINER_GATE_OUT',
-    remindBeforeHours: [7 * 24, 72, 24],
-    basis: 'Barang tidak diselesaikan 30 hari sejak penimbunan di TPS menjadi BTD (UU Kepabeanan ps. 68 & PMK terkait) — verifikasi.',
+    // Riset: eskalasi H-15, H-7, H-3 (+ H-1).
+    remindBeforeHours: [15 * 24, 7 * 24, 3 * 24, 24],
+    basis:
+      'UU Kepabeanan ps. 68 & ketentuan BTD (riset: semangat PMK 145/PMK.04/2014): barang di TPS > 30 hari sejak penimbunan menjadi BTD, dipindah ke TPP, dan dapat dilelang setelah 60 hari di TPP.',
+    risk: 'Status BTD: dipindah paksa ke TPP (biaya tambahan), dapat dilelang negara setelah 60 hari.',
   },
 ];

@@ -5,8 +5,8 @@ import type { CarrierCutoff, CompanyRole, MilestoneEvent, Owner } from '@ff/dead
 const keys = <T extends string>(m: Record<T, true>) => Object.keys(m) as [T, ...T[]];
 
 export const MILESTONE_EVENTS = keys<MilestoneEvent>({
-  SI_SUBMITTED: true, VGM_SUBMITTED: true, DRAFT_BL_APPROVED: true, NPE_ISSUED: true, CONTAINER_GATE_IN: true,
-  OUTWARD_MANIFEST_SUBMITTED: true, RKSP_SUBMITTED: true, INWARD_MANIFEST_SUBMITTED: true, PIB_SUBMITTED: true,
+  SI_SUBMITTED: true, VGM_SUBMITTED: true, DRAFT_BL_APPROVED: true, NPE_ISSUED: true, PEB_BL_UPDATED: true, CONTAINER_GATE_IN: true,
+  OUTWARD_MANIFEST_SUBMITTED: true, RKSP_SUBMITTED: true, INWARD_MANIFEST_SUBMITTED: true, HOUSE_BL_RECONCILED: true, PIB_SUBMITTED: true,
   SPPB_ISSUED: true, RED_LANE_ASSIGNED: true, PHYSICAL_INSPECTION_DONE: true, CONTAINER_DISCHARGED: true,
   CONTAINER_GATE_OUT: true, EMPTY_RETURNED: true,
 });

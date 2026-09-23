@@ -15,7 +15,7 @@ function parse(iso: string | undefined): number | undefined {
   return ms;
 }
 
-type Resolved = { at: number } | { missing: string[] };
+type Resolved = { at: number; assumption?: string } | { missing: string[] };
 
 /**
  * Akhir hari ke-`days` (23:59:59.999 waktu pelabuhan), menghitung hari `startMs` sebagai hari ke-1.
@@ -41,6 +41,19 @@ function resolveAnchor(anchor: Anchor, s: Shipment): Resolved {
     case 'ARRIVAL': {
       const base = parse(s.ata) ?? parse(s.eta);
       return base === undefined ? { missing: ['eta'] } : { at: base + anchor.offsetHours * HOUR };
+    }
+    case 'ARRIVAL_BY_VOYAGE': {
+      const arrival = parse(s.ata) ?? parse(s.eta);
+      if (arrival === undefined) return { missing: ['eta'] };
+      const departure = parse(s.atd) ?? parse(s.etd);
+      if (departure === undefined) {
+        return {
+          at: arrival + anchor.longVoyageOffsetHours * HOUR,
+          assumption: `etd asal belum diisi, dianggap pelayaran >= ${anchor.thresholdHours} jam`,
+        };
+      }
+      const long = arrival - departure >= anchor.thresholdHours * HOUR;
+      return { at: arrival + (long ? anchor.longVoyageOffsetHours : anchor.shortVoyageOffsetHours) * HOUR };
     }
     case 'EVENT': {
       const base = parse(ev[anchor.event]);
@@ -83,14 +96,16 @@ export function computeDeadlines(s: Shipment, rules: DeadlineRule[], now: Date):
     };
 
     let resolved = resolveAnchor(rule.anchor, s);
-    let estimated = false;
+    let estimateNote: string | undefined;
     if ('missing' in resolved && rule.fallback) {
       const fb = resolveAnchor(rule.fallback, s);
       if ('at' in fb) {
+        estimateNote = `${resolved.missing.join(', ')} belum diisi`;
         resolved = fb;
-        estimated = true;
       }
     }
+    if ('at' in resolved && resolved.assumption) estimateNote = estimateNote ? `${estimateNote}; ${resolved.assumption}` : resolved.assumption;
+    const estimated = estimateNote !== undefined;
 
     const completedIso = s.events?.[rule.doneWhen];
     const completedMs = parse(completedIso);
@@ -110,6 +125,8 @@ export function computeDeadlines(s: Shipment, rules: DeadlineRule[], now: Date):
     if (completedIso) d.completedAt = completedIso;
     if (dueMs !== undefined && completedMs === undefined) d.hoursLeft = Math.round(((dueMs - nowMs) / HOUR) * 10) / 10;
     if ('missing' in resolved) d.missing = resolved.missing;
+    if (estimateNote) d.estimateNote = estimateNote;
+    if (rule.risk) d.risk = rule.risk;
     return d;
   });
 }

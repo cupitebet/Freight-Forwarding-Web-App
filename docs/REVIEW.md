@@ -36,18 +36,21 @@ Deadline yang dipantau secara default:
 |------|----------|-----|
 | `EXP_SI_CLOSING` | Closing Shipping Instruction ke pelayaran | DOCS |
 | `EXP_VGM_CLOSING` | Closing VGM | DOCS |
-| `EXP_PEB_NPE` | PEB harus sudah NPE sebelum CY closing | CUSTOMS |
+| `EXP_PEB_NPE` | PEB harus sudah NPE sebelum CY closing (PMK 155/2022) | CUSTOMS |
+| `EXP_PEB_BL_UPDATE` | Lengkapi MBL/HBL di PEB ≤ 3 hari setelah berangkat (PMK 155/2022) | CUSTOMS |
 | `EXP_CY_CLOSING` | CY closing (gate-in full container) | OPS |
 | `EXP_DRAFT_BL` | Konfirmasi draft B/L | DOCS |
-| `EXP_OUTWARD_MANIFEST` | Outward manifest BC 1.1 (NVOCC/agen) | DOCS |
+| `EXP_OUTWARD_MANIFEST` | Outward manifest BC 1.1, **sebelum** keberangkatan (PMK 97/2020) | DOCS |
 | `IMP_RKSP` | RKSP (agen pelayaran) | DOCS |
-| `IMP_INWARD_MANIFEST` | Inward manifest BC 1.1 / pos house B/L | DOCS |
+| `IMP_INWARD_MANIFEST` | Inward manifest laut: pelayaran ≥ 24 jam → **24 jam sebelum tiba**; < 24 jam → sebelum tiba | DOCS |
+| `IMP_INWARD_MANIFEST_AIR` | Inward manifest udara: sebelum tiba | DOCS |
+| `IMP_HOUSE_BL_RECONCILE` | Rekonsiliasi house B/L ↔ master B/L ≤ 7 hari setelah tiba (kode 57) | DOCS |
 | `IMP_PIB_PRENOTIF` | PIB sebelum kapal tiba (SLA internal) | CUSTOMS |
 | `IMP_RED_LANE_INSPECTION` | Jalur merah, siapkan pemeriksaan fisik | OPS |
 | `IMP_STORAGE_FREE_TIME` | Free time penumpukan terminal | OPS |
 | `IMP_DEMURRAGE_FREE_TIME` | Free time demurrage | OPS |
 | `IMP_DETENTION_FREE_TIME` | Free time detention (empty return) | OPS |
-| `IMP_BTD_LIMIT` | Batas Barang Tidak Dikuasai (30 hari di TPS) | CUSTOMS |
+| `IMP_BTD_LIMIT` | Batas Barang Tidak Dikuasai (30 hari di TPS), pengingat H-15/H-7/H-3 | CUSTOMS |
 
 Perilaku alarm:
 - Cut-off diambil dari booking confirmation pelayaran. Kalau belum diinput, deadline diestimasi dari ETD dan diberi label **ESTIMASI**.
@@ -57,7 +60,7 @@ Perilaku alarm:
 - Data yang kurang (mis. cut-off draft B/L belum diinput) juga memicu notifikasi ke PIC.
 - Aman untuk banyak worker: tiap alarm "diklaim" dulu di tabel `deadline_alarm_sent` sebelum dikirim.
 
-> ⚠️ Kolom `basis` di `src/rules.ts` (PMK 158/2017, PMK 145/2014, BTD 30 hari, dsb.) adalah titik awal.
+> ⚠️ Kolom `basis` di `src/rules.ts` sudah diperbarui mengikuti riset regulasi (bagian 7), tetapi masih berasal dari sumber sekunder.
 > **Minta tim compliance memverifikasi setiap batas waktu sebelum dipakai di produksi.**
 > Katalog rule dirancang untuk disimpan di tabel `deadline_rule`, sehingga bisa di-override per carrier atau per customer tanpa deploy ulang.
 
@@ -146,3 +149,49 @@ Job (nomor job, arah: EXPORT/IMPORT, moda: SEA/AIR, customer, PIC per fungsi)
 ### Kesimpulan batch ini
 
 Tidak ada repo yang bisa langsung dipakai sebagai dasar aplikasi forwarding dengan kepabeanan Indonesia. Jadi keputusan membangun sendiri sesuai blueprint tetap benar. Yang diambil hanya konsep dan referensi: model data dari anwar-gazi/freightforward, pola arsitektur dari Trenova, dan opsi integrasi ke SAP untuk sisi keuangan.
+
+## 7. Evaluasi dokumen "Riset Aplikasi Freight Forwarding" (PDF, 14 halaman)
+
+Riset ini ditulis berdasarkan kondisi repo **sebelum** PR #1. Beberapa kekurangan yang disebut di dalamnya sudah dibangun: PostgreSQL, scheduler, HMAC, CI, dan monitoring scheduler lewat `/health`. Nilai utamanya ada di batas waktu regulasi yang lebih spesifik, dan sebagian menunjukkan rule lama saya salah.
+
+### Diadopsi ke katalog rule
+
+| Temuan riset | Sebelumnya | Sekarang |
+|---|---|---|
+| Inward manifest laut: pelayaran ≥ 24 jam → paling lambat 24 jam sebelum kedatangan; < 24 jam → sebelum kedatangan (PMK 158/2017 jo. 97/2020) | Saat kedatangan (**terlambat 24 jam** untuk pelayaran panjang) | Anchor baru `ARRIVAL_BY_VOYAGE`. Jika ETD asal belum diisi, sistem mengasumsikan pelayaran panjang (batas lebih awal = lebih aman) dan menandai deadline sebagai estimasi. |
+| Inward manifest udara: sebelum kedatangan | Sama, tapi digabung dengan laut | Rule terpisah `IMP_INWARD_MANIFEST_AIR` |
+| Outward manifest: sebelum keberangkatan | ATD + 24 jam (**terlalu longgar**) | ATD/ETD + 0, laut & udara |
+| Eskalasi H-12 jam untuk inward manifest | – | Ditambahkan ke pengingat |
+| Denda manifes Rp10–100 jt (terlambat), berjenjang bila berulang | – | Kolom `risk` baru, tampil di notifikasi |
+| PMK 155/2022: data B/L di PEB ≤ 3 hari kalender setelah berangkat, ingatkan hari ke-2 | – | Rule baru `EXP_PEB_BL_UPDATE` + milestone `PEB_BL_UPDATED` |
+| PEB paling lambat sebelum barang masuk Kawasan Pabean | Dasar hukum PMK 145/2014 | Dasar hukum diganti PMK 155/2022 |
+| House B/L ditolak (kode 57) jika tidak terekonsiliasi dengan master B/L dalam 7 hari; peringatan hari ke-5 | – | Rule baru `IMP_HOUSE_BL_RECONCILE` + milestone `HOUSE_BL_RECONCILED` |
+| BTD 30 hari: peringatan H-15, H-7, H-3 | H-7, H-3, H-1 | H-15, H-7, H-3, H-1 |
+
+Selain itu, notifikasi estimasi sekarang menyebut alasannya secara spesifik (mis. "carrierCutoffs.VGM belum diisi"). Sebelumnya selalu tertulis "cut-off pelayaran belum diinput", padahal tidak selalu itu penyebabnya.
+
+### Masih perlu verifikasi (jangan dianggap final)
+
+- **Sumber riset sebagian besar sekunder** (FAQ, blog konsultan, Scribd, portal peraturan pihak ketiga). Kode 57 / 7 hari hanya bersumber dari FAQ Duktek di Scribd, jadi wajib dikonfirmasi ke KPU/KPPBC setempat.
+- **Tabel manifes di PDF rusak saat konversi.** Tanda ≥/< hilang, dan baris "tidak sandar/bongkar 24 jam (laut)/8 jam (udara), manifes nihil" tidak bisa dibaca utuh. Kewajiban manifes nihil belum dimodelkan.
+- **Dasar BTD.** Riset menyebut "semangat PMK 145/2014". Angka 30 hari sesuai UU Kepabeanan ps. 68, tapi teks PMK yang berlaku saat ini perlu dicek.
+- **Batas pembatalan PEB (3 hari kerja).** Belum dimodelkan karena perlu kalender hari libur nasional.
+
+### Tidak diikuti, dengan alasan
+
+| Rekomendasi riset | Keputusan | Alasan |
+|---|---|---|
+| BullMQ + Redis `upsertJobScheduler` untuk tick alarm | **Belum perlu** | Masalah yang mau diselesaikan riset (eksekusi tumpang tindih di banyak server, pengiriman ganda) sudah teratasi dengan PostgreSQL advisory lock + klaim idempoten per alarm, dan sudah diuji dengan tick paralel. BullMQ menambah Redis sebagai komponen kritis. BullMQ baru layak dipakai untuk **antrian submit CEISA** (retry/backoff per dokumen, temuan #1). |
+| Idempotency key `hash_shipment_ID_event_type` | Key sekarang lebih tepat | Key yang dipakai: `job:rule:dueAt:threshold`. Tiap tahap pengingat punya key sendiri, dan pengingat otomatis dijadwalkan ulang kalau jadwal berubah. Key per event_type akan mencegah pengingat kedua dan seterusnya. |
+| ORM (TypeORM/MikroORM) dengan migrasi auto-generated | Tetap SQL + migrasi manual | Untuk data kepabeanan, migrasi yang ditulis dan di-review eksplisit lebih aman daripada auto-generate. Constraint (CHECK, UNIQUE, FK) terlihat jelas. Bisa ditinjau ulang kalau tim lebih nyaman dengan ORM. |
+| Multi-tenancy **per schema** (`tenant_jkt`, `tenant_sby`) untuk cabang | **Tidak disarankan** untuk cabang satu perusahaan | Cabang satu perusahaan berbagi customer, vendor, dan laporan konsolidasi. Schema terpisah membuat migrasi berlipat dan laporan lintas cabang sulit. Cukup kolom `branch_id` + Row-Level Security PostgreSQL. Schema-per-tenant baru relevan kalau aplikasi dijual sebagai SaaS ke perusahaan lain. |
+| Tabel `alarm_states` (Pending/Triggered/Escalated/Resolved) | Sudah tercakup | `deadline_alarm_sent` (terkirim + acknowledge) plus status deadline yang dihitung dari milestone (`DONE`/`OVERDUE`). Status tidak disimpan ganda supaya tidak bisa tidak sinkron. |
+| **Evolution API** untuk WhatsApp | **Hati-hati: jangan untuk produksi** | Evolution API memakai WhatsApp Web tidak resmi (scan QR). Nomor bisa diblokir Meta, dan cara ini melanggar ketentuan WhatsApp. Alarm kepatuhan tidak boleh bergantung pada kanal yang bisa mati tiba-tiba. Untuk produksi pakai **WhatsApp Business Platform (Cloud API) resmi** atau BSP resmi, dengan email/Slack sebagai kanal cadangan. Evolution API cukup untuk demo. |
+
+### Diadopsi sebagai backlog (belum dikerjakan)
+
+- **PSE Lingkup Privat Komdigi** (KBLI 63122, lewat OSS) harus beres **sebelum** go-live. Ini tugas legal, paralel dengan development.
+- **Integrasi CEISA:** OAuth 2.0, validasi JSON Schema BC resmi dari `openapi.beacukai.go.id` sebelum submit, penanganan error 901/908 (sertifikat/koneksi) dengan backoff, dan **fallback ekspor flat file/Excel** untuk upload manual kalau H2H mati.
+- **Referensi DCSA** `carrierBookingReference` dan `transportDocumentReference` disimpan di `master_doc` untuk mencocokkan feed tracking.
+- **n8n:** pisahkan URL `/webhook-test/` (uji) dan `/webhook/` (produksi).
+- **Pilot:** shadow run 2–4 minggu berdampingan dengan spreadsheet manual sebelum tim sepenuhnya bergantung pada alarm. Ini sama dengan rekomendasi sebelumnya.
