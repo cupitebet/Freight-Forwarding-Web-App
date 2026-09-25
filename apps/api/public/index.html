@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Freight Forwarding — Alarm Dashboard</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel-2: #16213a; --border: #2c3b57;
+    --text: #e2e8f0; --muted: #94a3b8;
+    --red: #ef4444; --red-bg: #451a1a; --orange: #f97316; --orange-bg: #4a2c12;
+    --yellow: #eab308; --yellow-bg: #453a0f; --blue: #38bdf8; --blue-bg: #142c3d;
+    --green: #22c55e; --green-bg: #133321; --gray-bg: #263248;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .key-box { display: flex; align-items: center; gap: 6px; }
+  input, select, button {
+    font: inherit; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: #4b5f88; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.primary:hover { background: #1d4ed8; }
+  button.small { padding: 4px 8px; font-size: 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  section > .head {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  section > .head h2 { margin: 0; font-size: 15px; }
+  section > .head .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  tbody tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .badge.OVERDUE, .badge.CRITICAL { background: var(--red-bg); color: var(--red); }
+  .badge.WARNING { background: var(--yellow-bg); color: var(--yellow); }
+  .badge.MISSING_DATA, .badge.INFO { background: var(--blue-bg); color: var(--blue); }
+  .badge.SCHEDULED { background: var(--gray-bg); color: var(--muted); }
+  .badge.DONE, .badge.SENT { background: var(--green-bg); color: var(--green); }
+  .job-ref { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+  .rule-code { font-family: ui-monospace, monospace; font-size: 12px; }
+  .risk { font-size: 12px; color: var(--orange); margin-top: 4px; }
+  .empty, .error, .loading { padding: 24px 16px; text-align: center; color: var(--muted); }
+  .error { color: var(--red); }
+  .gate { max-width: 380px; margin: 80px auto; padding: 24px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+  .gate h2 { margin-top: 0; font-size: 16px; }
+  .gate input { width: 100%; margin: 10px 0; }
+  .gate button { width: 100%; }
+  .hidden { display: none !important; }
+  .updated { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate hidden">
+  <h2>Masuk ke Dashboard</h2>
+  <p class="muted">Masukkan API key. Key ini hanya disimpan di browser Anda (localStorage), tidak dikirim ke mana pun selain API aplikasi ini.</p>
+  <input id="gateKeyInput" type="password" placeholder="API key" autocomplete="off" />
+  <button class="primary" id="gateSaveBtn">Masuk</button>
+  <p id="gateError" class="error hidden"></p>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div>
+      <h1>Freight Forwarding — Alarm Dashboard</h1>
+      <div class="sub">Deadline &amp; alarm cut-off, langsung dari database (belum ada kanal WhatsApp/Slack — lihat di sini dulu)</div>
+    </div>
+    <div class="key-box">
+      <span id="updatedAt" class="updated"></span>
+      <button class="small" id="refreshBtn">Refresh</button>
+      <button class="small" id="changeKeyBtn">Ganti API key</button>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="head">
+        <h2>Hari Ini — deadline yang perlu perhatian</h2>
+        <div class="controls">
+          <select id="ownerFilter">
+            <option value="">Semua fungsi</option>
+            <option value="DOCS">DOCS (Dokumen)</option>
+            <option value="CUSTOMS">CUSTOMS (Kepabeanan)</option>
+            <option value="OPS">OPS (Operasional)</option>
+            <option value="FINANCE">FINANCE (Keuangan)</option>
+          </select>
+        </div>
+      </div>
+      <div id="deadlinesBody"><div class="loading">Memuat…</div></div>
+    </section>
+
+    <section>
+      <div class="head">
+        <h2>Riwayat Alarm</h2>
+        <div class="controls">
+          <select id="ackFilter">
+            <option value="false">Belum ditindaklanjuti</option>
+            <option value="true">Sudah ditindaklanjuti</option>
+            <option value="">Semua</option>
+          </select>
+        </div>
+      </div>
+      <div id="alarmsBody"><div class="loading">Memuat…</div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const KEY_STORAGE = 'ff_api_key';
+  const $ = (id) => document.getElementById(id);
+
+  const STATUS_LABEL = {
+    OVERDUE: 'Terlambat', CRITICAL: 'Kritis', WARNING: 'Perlu Perhatian',
+    MISSING_DATA: 'Data Kurang', SCHEDULED: 'Terjadwal', DONE: 'Selesai', DONE_LATE: 'Selesai (Terlambat)',
+  };
+  const KIND_LABEL = { REMINDER: 'Pengingat', OVERDUE: 'Terlambat', MISSING_DATA: 'Data Kurang' };
+  const OWNER_LABEL = { DOCS: 'Dokumen', CUSTOMS: 'Kepabeanan', OPS: 'Operasional', FINANCE: 'Keuangan' };
+
+  const fmtTime = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' }).format(new Date(iso)) + ' WIB';
+    } catch { return iso; }
+  };
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ------------------------------------------------------------------ auth gate
+  function getKey() { return localStorage.getItem(KEY_STORAGE) || ''; }
+  function setKey(v) { localStorage.setItem(KEY_STORAGE, v); }
+  function showGate(message) {
+    $('app').classList.add('hidden');
+    $('gate').classList.remove('hidden');
+    $('gateKeyInput').value = '';
+    $('gateKeyInput').focus();
+    if (message) { $('gateError').textContent = message; $('gateError').classList.remove('hidden'); }
+    else { $('gateError').classList.add('hidden'); }
+  }
+  function showApp() {
+    $('gate').classList.add('hidden');
+    $('app').classList.remove('hidden');
+  }
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(path, { ...opts, headers: { 'x-api-key': getKey(), 'content-type': 'application/json', ...(opts.headers || {}) } });
+    if (res.status === 401) { showGate('API key tidak valid.'); throw new Error('unauthorized'); }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `Permintaan gagal (HTTP ${res.status})`);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  // ------------------------------------------------------------------ Hari Ini
+  const STATUS_ORDER = ['OVERDUE', 'CRITICAL', 'MISSING_DATA', 'WARNING', 'SCHEDULED'];
+
+  async function loadDeadlines() {
+    const box = $('deadlinesBody');
+    const owner = $('ownerFilter').value;
+    try {
+      const rows = await apiFetch(`/deadlines${owner ? `?owner=${owner}` : ''}`);
+      if (!rows.length) { box.innerHTML = '<div class="empty">Tidak ada deadline yang perlu perhatian saat ini. 🎉</div>'; return; }
+      box.innerHTML = `<table><thead><tr>
+        <th>Status</th><th>Job</th><th>Deadline</th><th>Fungsi</th><th>Batas Waktu</th><th>Sisa</th>
+      </tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table>`;
+    } catch (e) {
+      if (e.message !== 'unauthorized') box.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    }
+  }
+
+  function rowHtml(d) {
+    const left = d.hoursLeft == null ? '—' : d.hoursLeft < 0 ? `terlambat ${Math.abs(d.hoursLeft).toFixed(1)} jam` : `${d.hoursLeft.toFixed(1)} jam`;
+    const risk = d.risk ? `<div class="risk">⚠ ${esc(d.risk)}</div>` : '';
+    const est = d.estimated ? `<div class="muted" style="font-size:12px">Estimasi${d.estimateNote ? ': ' + esc(d.estimateNote) : ''}</div>` : '';
+    const missing = d.missing?.length ? `<div class="muted" style="font-size:12px">Lengkapi: ${esc(d.missing.join(', '))}</div>` : '';
+    return `<tr>
+      <td><span class="badge ${d.status}">${STATUS_LABEL[d.status] || d.status}</span></td>
+      <td><div>${esc(d.jobReference)}</div><div class="job-ref">${esc(d.title)}</div></td>
+      <td><span class="rule-code">${esc(d.ruleCode)}</span>${risk}${missing}</td>
+      <td>${OWNER_LABEL[d.owner] || d.owner}${d.pic ? `<div class="muted" style="font-size:12px">${esc(d.pic)}</div>` : ''}</td>
+      <td>${fmtTime(d.dueAt)}${est}</td>
+      <td>${left}</td>
+    </tr>`;
+  }
+
+  // ------------------------------------------------------------------ Riwayat Alarm
+  async function loadAlarms() {
+    const box = $('alarmsBody');
+    const acknowledged = $('ackFilter').value;
+    try {
+      const rows = await apiFetch(`/alarms?limit=50${acknowledged !== '' ? `&acknowledged=${acknowledged}` : ''}`);
+      if (!rows.length) { box.innerHTML = '<div class="empty">Belum ada alarm di kategori ini.</div>'; return; }
+      box.innerHTML = `<table><thead><tr>
+        <th>Waktu</th><th>Job</th><th>Alarm</th><th>Urgensi</th><th>Status</th>
+      </tr></thead><tbody>${rows.map(alarmRowHtml).join('')}</tbody></table>`;
+      box.querySelectorAll('button[data-ack]').forEach((btn) => btn.addEventListener('click', onAck));
+    } catch (e) {
+      if (e.message !== 'unauthorized') box.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    }
+  }
+
+  function alarmRowHtml(a) {
+    const ackCell = a.acknowledgedAt
+      ? `<span class="muted" style="font-size:12px">✓ ${esc(a.acknowledgedBy)}<br>${fmtTime(a.acknowledgedAt)}</span>`
+      : `<button class="small" data-ack="${esc(a.alarmKey)}">Tandai selesai</button>`;
+    return `<tr>
+      <td>${fmtTime(a.sentAt)}</td>
+      <td class="job-ref">${esc(a.jobReference)}</td>
+      <td><span class="rule-code">${esc(a.ruleCode)}</span><div class="muted" style="font-size:12px">${KIND_LABEL[a.kind] || a.kind}${a.escalate ? ' · dieskalasi' : ''}</div></td>
+      <td><span class="badge ${a.severity}">${a.severity}</span></td>
+      <td>${ackCell}</td>
+    </tr>`;
+  }
+
+  async function onAck(ev) {
+    const btn = ev.currentTarget;
+    const key = btn.getAttribute('data-ack');
+    btn.disabled = true; btn.textContent = 'Menyimpan…';
+    try {
+      await apiFetch(`/alarms/${encodeURIComponent(key)}/ack`, { method: 'POST' });
+      await loadAlarms();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Tandai selesai';
+      if (e.message !== 'unauthorized') alert(e.message);
+    }
+  }
+
+  // ------------------------------------------------------------------ wiring
+  async function loadAll() {
+    await Promise.all([loadDeadlines(), loadAlarms()]);
+    $('updatedAt').textContent = 'Diperbarui ' + new Intl.DateTimeFormat('id-ID', { timeStyle: 'medium' }).format(new Date());
+  }
+
+  $('gateSaveBtn').addEventListener('click', async () => {
+    const v = $('gateKeyInput').value.trim();
+    if (!v) return;
+    setKey(v);
+    try {
+      await apiFetch('/health');
+    } catch { /* /health publik, cuma memastikan server hidup */ }
+    showApp();
+    loadAll();
+  });
+  $('gateKeyInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('gateSaveBtn').click(); });
+  $('changeKeyBtn').addEventListener('click', () => { setKey(''); showGate(); });
+  $('refreshBtn').addEventListener('click', loadAll);
+  $('ownerFilter').addEventListener('change', loadDeadlines);
+  $('ackFilter').addEventListener('change', loadAlarms);
+
+  if (getKey()) { showApp(); loadAll(); } else { showGate(); }
+  setInterval(loadAll, 60000);
+})();
+</script>
+</body>
+</html>
