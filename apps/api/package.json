@@ -1,0 +1,32 @@
+{
+  "name": "@ff/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node --env-file-if-exists=../../.env dist/src/main.js",
+    "migrate": "node --env-file-if-exists=../../.env dist/src/db/migrate-cli.js",
+    "test": "tsc && node --env-file-if-exists=../../.env --test --test-concurrency=1 \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@ff/deadline-alarm": "^0.1.0",
+    "@nestjs/common": "^12.0.4",
+    "@nestjs/core": "^12.0.4",
+    "@nestjs/platform-express": "^12.0.4",
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.4",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.9.0"
+  }
+}
