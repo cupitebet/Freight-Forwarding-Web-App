@@ -63,7 +63,7 @@ export function formatAlarmMessage(alarm: Alarm, s: Shipment): string {
 }
 
 export interface WebhookNotifierOptions {
-  /** Secret bersama dengan n8n. Jika diisi, request ditandatangani HMAC-SHA256. */
+  /** Secret bersama dengan penerima webhook. Jika diisi, request ditandatangani HMAC-SHA256. */
   secret?: string;
   headers?: Record<string, string>;
   timeoutMs?: number;
@@ -79,8 +79,9 @@ export function signWebhook(secret: string, body: string, timestamp: number): st
 }
 
 /**
- * Kirim alarm ke webhook n8n (sesuai blueprint: n8n yang meneruskan ke
- * WhatsApp/Slack/email). Payload berisi teks siap kirim + data terstruktur.
+ * Kirim alarm ke webhook eksternal (n8n, Slack, WhatsApp Cloud API, atau endpoint kustom apa pun
+ * yang bisa menerima POST JSON). Opsional — tanpa notifier ini, pakai `LogNotifier` di apps/api
+ * atau `ConsoleNotifier` di bawah. Payload berisi teks siap kirim + data terstruktur.
  */
 export class WebhookNotifier implements Notifier {
   private readonly url: string;

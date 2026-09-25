@@ -15,7 +15,7 @@ const DB_URL = process.env.TEST_DATABASE_URL ?? 'postgres://ff:ff@localhost:5432
 const API_KEY = 'test-key-0123456789abcdefghij';
 const SECRET = 'webhook-secret-0123456789abcdefghijklmnop';
 
-// ---------------------------------------------------------------- n8n tiruan
+// ---------------------------------------------------------------- kanal webhook tiruan (bukan n8n khususnya)
 interface Hook {
   headers: IncomingMessage['headers'];
   raw: string;
@@ -23,7 +23,7 @@ interface Hook {
 }
 const hooks: Hook[] = [];
 let hookStatus = 200;
-const n8n: Server = createServer((req, res) => {
+const webhookServer: Server = createServer((req, res) => {
   let raw = '';
   req.on('data', (c) => (raw += c));
   req.on('end', () => {
@@ -66,13 +66,13 @@ before(async () => {
   if (!dbName.endsWith('_test')) throw new Error(`TEST_DATABASE_URL harus menunjuk database *_test (sekarang: ${dbName})`);
   db = new pg.Pool({ connectionString: DB_URL });
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
-  await new Promise<void>((r) => n8n.listen(0, r));
+  await new Promise<void>((r) => webhookServer.listen(0, r));
   const config = loadConfig({
     NODE_ENV: 'test',
     DATABASE_URL: DB_URL,
     API_KEYS: `other-key-0123456789abcdefgh,${API_KEY}`,
     ALARM_ENABLED: 'false', // tick dipanggil manual di test
-    N8N_ALARM_WEBHOOK_URL: `http://127.0.0.1:${(n8n.address() as AddressInfo).port}/hook`,
+    ALARM_WEBHOOK_URL: `http://127.0.0.1:${(webhookServer.address() as AddressInfo).port}/hook`,
     ALARM_WEBHOOK_SECRET: SECRET,
   });
   app = await createApp(config, { migrate: true, logger: false });
@@ -83,7 +83,7 @@ before(async () => {
 after(async () => {
   await app?.close();
   await db?.end();
-  n8n.close();
+  webhookServer.close();
 });
 
 beforeEach(() => {
@@ -95,14 +95,19 @@ describe('konfigurasi', () => {
   test('menolak env yang tidak aman', () => {
     assert.throws(() => loadConfig({ DATABASE_URL: DB_URL, API_KEYS: 'pendek' }), /API key minimal 24/);
     assert.throws(
-      () => loadConfig({ DATABASE_URL: DB_URL, API_KEYS: API_KEY, N8N_ALARM_WEBHOOK_URL: 'http://x.test/h' }),
+      () => loadConfig({ DATABASE_URL: DB_URL, API_KEYS: API_KEY, ALARM_WEBHOOK_URL: 'http://x.test/h' }),
       /ALARM_WEBHOOK_SECRET/,
     );
-    assert.throws(() => loadConfig({ NODE_ENV: 'production', DATABASE_URL: DB_URL, API_KEYS: API_KEY }), /N8N_ALARM_WEBHOOK_URL/);
+  });
+
+  test('production tidak butuh ALARM_WEBHOOK_URL — default log-only, tanpa n8n', () => {
+    const c = loadConfig({ NODE_ENV: 'production', DATABASE_URL: DB_URL, API_KEYS: API_KEY });
+    assert.equal(c.nodeEnv, 'production');
+    assert.equal(c.alarm.webhookUrl, undefined);
   });
 
   test('baris .env kosong dianggap tidak diisi (sesuai .env.example)', () => {
-    const c = loadConfig({ DATABASE_URL: DB_URL, API_KEYS: API_KEY, N8N_ALARM_WEBHOOK_URL: '', ALARM_WEBHOOK_SECRET: '', PORT: '' });
+    const c = loadConfig({ DATABASE_URL: DB_URL, API_KEYS: API_KEY, ALARM_WEBHOOK_URL: '', ALARM_WEBHOOK_SECRET: '', PORT: '' });
     assert.equal(c.alarm.webhookUrl, undefined);
     assert.equal(c.port, 3000);
   });
@@ -250,7 +255,26 @@ describe('HTTP API', () => {
 });
 
 describe('scheduler alarm', () => {
-  test('mengirim ke webhook n8n dengan tanda tangan HMAC, dan tidak mengirim ulang', async () => {
+  test('tanpa ALARM_WEBHOOK_URL: alarm log-only, tetap tercatat SENT di DB, tanpa n8n', async () => {
+    const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: DB_URL, API_KEYS: API_KEY, ALARM_ENABLED: 'false' });
+    assert.equal(config.alarm.webhookUrl, undefined);
+    const logOnlyApp = await createApp(config, { logger: false });
+    try {
+      await db.query(`UPDATE job SET status = 'CLOSED'`);
+      const { body } = await api('POST', '/jobs', exportJob('EXP/T/105'));
+      const before = hooks.length;
+      const t1 = await logOnlyApp.get(AlarmScheduler).tick();
+      assert.ok(t1.sent > 0);
+      assert.equal(hooks.length, before, 'tidak ada request keluar sama sekali (bukan cuma webhook yang gagal)');
+      const stored = await db.query(`SELECT status, sent_at FROM deadline_alarm_sent WHERE job_id = $1`, [body.job.id]);
+      assert.equal(stored.rows.length, t1.sent);
+      assert.ok(stored.rows.every((r) => r.status === 'SENT' && r.sent_at));
+    } finally {
+      await logOnlyApp.close();
+    }
+  });
+
+  test('mengirim ke webhook eksternal (opsional, bisa n8n atau apa pun) dengan tanda tangan HMAC, dan tidak mengirim ulang', async () => {
     await db.query(`UPDATE job SET status = 'CLOSED'`);
     const { body } = await api('POST', '/jobs', exportJob('EXP/T/100'));
     const scheduler = app.get(AlarmScheduler);
@@ -335,5 +359,43 @@ describe('scheduler alarm', () => {
     assert.ok(!after.includes('EXP_DRAFT_BL'));
     assert.ok(after.includes('EXP_SI_CLOSING'), 'rule default tetap dipakai bila override tidak valid');
     await db.query('DELETE FROM deadline_rule');
+  });
+});
+
+describe('GET /alarms & acknowledge', () => {
+  test('daftar alarm terkirim, filter kind/severity/owner/acknowledged, dan ack idempoten', async () => {
+    await db.query(`UPDATE job SET status = 'CLOSED'`);
+    const { body } = await api('POST', '/jobs', exportJob('EXP/T/200'));
+    const scheduler = app.get(AlarmScheduler);
+    await scheduler.tick();
+
+    const all = await api('GET', `/alarms?jobId=${body.job.id}`);
+    assert.equal(all.status, 200);
+    assert.ok(all.body.length > 0);
+    assert.ok(all.body.every((a: { jobReference: string }) => a.jobReference === 'EXP/T/200'));
+
+    const reminder = all.body.find((a: { kind: string }) => a.kind === 'REMINDER');
+    const critical = await api('GET', `/alarms?jobId=${body.job.id}&severity=CRITICAL`);
+    assert.ok(critical.body.every((a: { severity: string }) => a.severity === 'CRITICAL'));
+    const docsOnly = await api('GET', `/alarms?jobId=${body.job.id}&owner=DOCS`);
+    assert.ok(docsOnly.body.length > 0 && docsOnly.body.length <= all.body.length);
+
+    const notFound = await api('POST', '/alarms/tidak-ada/ack');
+    assert.equal(notFound.status, 404);
+
+    const ack1 = await api('POST', `/alarms/${reminder.alarmKey}/ack`);
+    assert.equal(ack1.status, 200);
+    assert.match(ack1.body.acknowledgedBy, /^api-key:[0-9a-f]{8}$/);
+    const firstAckAt = ack1.body.acknowledgedAt;
+
+    // Acknowledge kedua (aktor lain) tidak menimpa yang pertama.
+    const ack2 = await api('POST', `/alarms/${reminder.alarmKey}/ack`, undefined, `other-key-0123456789abcdefgh`);
+    assert.equal(ack2.body.acknowledgedBy, ack1.body.acknowledgedBy);
+    assert.equal(ack2.body.acknowledgedAt, firstAckAt);
+
+    const pending = await api('GET', `/alarms?jobId=${body.job.id}&acknowledged=false`);
+    assert.ok(!pending.body.some((a: { alarmKey: string }) => a.alarmKey === reminder.alarmKey));
+    const done = await api('GET', `/alarms?jobId=${body.job.id}&acknowledged=true`);
+    assert.ok(done.body.some((a: { alarmKey: string }) => a.alarmKey === reminder.alarmKey));
   });
 });
