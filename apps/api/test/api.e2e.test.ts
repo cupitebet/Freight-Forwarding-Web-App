@@ -118,6 +118,14 @@ describe('konfigurasi', () => {
 });
 
 describe('HTTP API', () => {
+  test('dashboard (public/index.html) publik tanpa API key, endpoint data tetap dijaga', async () => {
+    const res = await fetch(`${base}/`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /html/);
+    assert.match(await res.text(), /Alarm Dashboard/);
+    assert.equal((await api('GET', '/alarms', undefined, null)).status, 401);
+  });
+
   test('health publik, endpoint lain wajib API key', async () => {
     assert.equal((await api('GET', '/health', undefined, null)).status, 200);
     assert.equal((await api('GET', '/deadlines', undefined, null)).status, 401);

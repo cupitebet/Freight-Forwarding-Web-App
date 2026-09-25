@@ -18,6 +18,7 @@ COPY --from=build /app/packages/deadline-alarm/dist packages/deadline-alarm/dist
 COPY --from=build /app/apps/api/package.json apps/api/
 COPY --from=build /app/apps/api/dist/src apps/api/dist/src
 COPY --from=build /app/apps/api/migrations apps/api/migrations
+COPY --from=build /app/apps/api/public apps/api/public
 WORKDIR /app/apps/api
 USER node
 EXPOSE 3000
