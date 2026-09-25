@@ -1,7 +1,7 @@
 # Review Blueprint "Freight Forwarder App & API Bea Cukai"
 
-Catatan: repo ini belum punya kode aplikasi. Yang direview adalah dokumen
-`Freight Forwarder App & API Bea Cukai.docx` (arsitektur NestJS + n8n + PostgreSQL + Redis, integrasi H2H CEISA 4.0).
+Review dokumen `Freight Forwarder App & API Bea Cukai.docx` (arsitektur NestJS + n8n + PostgreSQL + Redis, integrasi H2H CEISA 4.0).
+Saat review ini dimulai repo belum punya kode. Implementasinya sekarang ada di `apps/api` dan `packages/deadline-alarm`.
 
 > **Keputusan scope (23/09/2026):** aplikasi hanya untuk **internal** perusahaan.
 > Portal pelanggan (blueprint bagian 3.1 "Customer Portal" & 6.3 "Portal Pelanggan Mandiri") **tidak dibangun**,
