@@ -14,15 +14,18 @@ const schema = z
       .pipe(z.array(z.string().min(24, 'API key minimal 24 karakter')).min(1)),
     ALARM_ENABLED: bool.default(true),
     ALARM_TICK_SECONDS: z.coerce.number().int().min(10).default(300),
-    N8N_ALARM_WEBHOOK_URL: z.string().url().optional(),
+    /**
+     * Opsional. Tanpa ini, alarm tetap dihitung, disimpan di `deadline_alarm_sent`, dan bisa
+     * dibaca lewat GET /alarms — hanya belum diteruskan ke kanal eksternal (WhatsApp/Slack/n8n/dst).
+     * Isi field ini kapan pun kanal itu sudah siap; tidak perlu n8n khususnya, endpoint apa pun
+     * yang bisa menerima POST JSON + verifikasi HMAC bisa dipakai.
+     */
+    ALARM_WEBHOOK_URL: z.string().url().optional(),
     ALARM_WEBHOOK_SECRET: z.string().min(32, 'secret minimal 32 karakter').optional(),
   })
   .superRefine((c, ctx) => {
-    if (c.N8N_ALARM_WEBHOOK_URL && !c.ALARM_WEBHOOK_SECRET) {
-      ctx.addIssue({ code: 'custom', path: ['ALARM_WEBHOOK_SECRET'], message: 'wajib diisi jika N8N_ALARM_WEBHOOK_URL diisi' });
-    }
-    if (c.NODE_ENV === 'production' && c.ALARM_ENABLED && !c.N8N_ALARM_WEBHOOK_URL) {
-      ctx.addIssue({ code: 'custom', path: ['N8N_ALARM_WEBHOOK_URL'], message: 'wajib di production selama ALARM_ENABLED=true' });
+    if (c.ALARM_WEBHOOK_URL && !c.ALARM_WEBHOOK_SECRET) {
+      ctx.addIssue({ code: 'custom', path: ['ALARM_WEBHOOK_SECRET'], message: 'wajib diisi jika ALARM_WEBHOOK_URL diisi' });
     }
   });
 
@@ -42,7 +45,7 @@ export interface AppConfig {
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  // Baris `.env` seperti `N8N_ALARM_WEBHOOK_URL=` berarti "tidak diisi", bukan string kosong.
+  // Baris `.env` seperti `ALARM_WEBHOOK_URL=` berarti "tidak diisi", bukan string kosong.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v.trim() !== ''));
   const parsed = schema.safeParse(cleaned);
   if (!parsed.success) {
@@ -58,7 +61,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     alarm: {
       enabled: c.ALARM_ENABLED,
       tickSeconds: c.ALARM_TICK_SECONDS,
-      webhookUrl: c.N8N_ALARM_WEBHOOK_URL,
+      webhookUrl: c.ALARM_WEBHOOK_URL,
       webhookSecret: c.ALARM_WEBHOOK_SECRET,
     },
   };

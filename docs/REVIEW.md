@@ -6,6 +6,13 @@ Saat review ini dimulai repo belum punya kode. Implementasinya sekarang ada di `
 > **Keputusan scope (23/09/2026):** aplikasi hanya untuk **internal** perusahaan.
 > Portal pelanggan (blueprint bagian 3.1 "Customer Portal" & 6.3 "Portal Pelanggan Mandiri") **tidak dibangun**,
 > dan pendaftaran PSE Komdigi tidak diperlukan. Pengguna: staf DOCS, CUSTOMS, OPS, FINANCE.
+>
+> **Keputusan arsitektur (25/09/2026): n8n dikeluarkan dari jalur wajib.** Blueprint asli memakai n8n
+> sebagai perantara notifikasi (bagian 5). Sekarang `apps/api` mengirim alarm langsung: log-only
+> secara default (`LogNotifier`, dibaca lewat `GET /alarms`), dan kanal eksternal (webhook generik,
+> atau `Notifier` kustom seperti Slack/WhatsApp Cloud API) ditambahkan kapan pun siap tanpa n8n.
+> Lihat `apps/api/README.md` bagian Alarm. n8n tetap bisa dipakai sebagai salah satu kanal (lewat
+> `ALARM_WEBHOOK_URL`), tapi bukan lagi komponen yang harus ada.
 
 Arahnya sudah benar: core app dipisah dari lapisan integrasi, PostgreSQL + JSONB, token disimpan di cache, dan layar utama fokus ke pengecualian (exception).
 Di bawah ini daftar yang perlu diperbaiki sebelum mulai coding, diurutkan dari yang paling berisiko.
@@ -197,5 +204,5 @@ Selain itu, notifikasi estimasi sekarang menyebut alasannya secara spesifik (mis
 - **PSE Lingkup Privat Komdigi: tidak diperlukan untuk saat ini.** Keputusan pemilik (23/09/2026): aplikasi hanya dipakai internal, tidak melayani publik. Portal pelanggan (blueprint bagian 3.1 & 6.3) **dikeluarkan dari scope**. Tinjau ulang PSE hanya jika kelak ada akses dari luar perusahaan (mis. login untuk klien/agen).
 - **Integrasi CEISA:** OAuth 2.0, validasi JSON Schema BC resmi dari `openapi.beacukai.go.id` sebelum submit, penanganan error 901/908 (sertifikat/koneksi) dengan backoff, dan **fallback ekspor flat file/Excel** untuk upload manual kalau H2H mati.
 - **Referensi DCSA** `carrierBookingReference` dan `transportDocumentReference` disimpan di `master_doc` untuk mencocokkan feed tracking.
-- **n8n:** pisahkan URL `/webhook-test/` (uji) dan `/webhook/` (produksi).
+- **n8n (opsional, kalau nanti dipakai sebagai salah satu kanal):** pisahkan URL `/webhook-test/` (uji) dan `/webhook/` (produksi). Lihat keputusan arsitektur di atas — bukan lagi prasyarat.
 - **Pilot:** shadow run 2–4 minggu berdampingan dengan spreadsheet manual sebelum tim sepenuhnya bergantung pada alarm. Ini sama dengan rekomendasi sebelumnya.
