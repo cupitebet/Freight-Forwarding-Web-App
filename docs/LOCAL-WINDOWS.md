@@ -15,7 +15,6 @@ PowerShell:
 ```powershell
 git clone https://github.com/cupitebet/Freight-Forwarding-Web-App.git "D:\WebApp Forwarding"
 cd "D:\WebApp Forwarding"
-git checkout claude/modest-hamilton-fi90cx   # sampai PR #1 di-merge ke main
 ```
 
 Kalau folder `D:\WebApp Forwarding` sudah berisi file lain, clone ke subfolder (mis. `D:\WebApp Forwarding\app`) supaya file lama tidak bercampur.
@@ -52,6 +51,8 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke-test.ps1
 ```
 
 Smoke test membuat job ekspor contoh, lalu menampilkan deadline-nya (SI closing CRITICAL, VGM ESTIMASI, dan seterusnya). Setelah itu smoke test mencatat milestone, mengubah cut-off, menampilkan layar "Hari ini" PIC DOCS, dan terakhir menutup job contoh. Alarm muncul di jendela `npm start` pada tick scheduler berikutnya (default 5 menit; set `ALARM_TICK_SECONDS=30` di `.env` supaya lebih cepat saat mencoba).
+
+**Dashboard web:** buka `http://localhost:3000/` di browser selagi `npm start` jalan, masukkan API key dari `.env` sekali (tersimpan di browser). Halaman menampilkan deadline hari ini dan riwayat alarm, auto-refresh tiap 60 detik.
 
 Coba manual:
 
